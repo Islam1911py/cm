@@ -109,7 +109,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { name, typeId, monthlyManagementFee, isActive } = body
+    const { name, typeId,isActive } = body
 
     if (!name || !typeId) {
       return NextResponse.json(
@@ -134,7 +134,6 @@ export async function POST(request: NextRequest) {
       data: {
         name,
         typeId,
-        monthlyManagementFee: monthlyManagementFee || 0,
         isActive: isActive !== false,
       },
       include: {
