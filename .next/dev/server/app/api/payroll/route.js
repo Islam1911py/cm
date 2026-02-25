@@ -1,0 +1,10 @@
+var R=require("../../../chunks/[turbopack]_runtime.js")("server/app/api/payroll/route.js")
+R.c("server/chunks/3cf3d_next_92d4514a._.js")
+R.c("server/chunks/3cf3d_next-auth_8e7d40e3._.js")
+R.c("server/chunks/3cf3d_openid-client_733bd807._.js")
+R.c("server/chunks/3cf3d_jose_dist_node_cjs_7e2c0b8c._.js")
+R.c("server/chunks/[root-of-the-server]__c5478f72._.js")
+R.c("server/chunks/[root-of-the-server]__881c94c8._.js")
+R.c("server/chunks/Desktop_cmd-main__next-internal_server_app_api_payroll_route_actions_b36b08e8.js")
+R.m("[project]/Desktop/cmd-main/node_modules/next/dist/esm/build/templates/app-route.js { INNER_APP_ROUTE => \"[project]/Desktop/cmd-main/src/app/api/payroll/route.ts [app-route] (ecmascript)\" } [app-route] (ecmascript)")
+module.exports=R.m("[project]/Desktop/cmd-main/node_modules/next/dist/esm/build/templates/app-route.js { INNER_APP_ROUTE => \"[project]/Desktop/cmd-main/src/app/api/payroll/route.ts [app-route] (ecmascript)\" } [app-route] (ecmascript)").exports

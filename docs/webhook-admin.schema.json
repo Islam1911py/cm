@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmd.local/schemas/admin-query-request.json",
+  "title": "AdminQueryRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "type": {
+      "type": ["string", "null"],
+      "enum": ["ALL_DATA", null],
+      "default": "ALL_DATA",
+      "description": "Snapshot type. Defaults to ALL_DATA when omitted."
+    },
+    "senderPhone": {
+      "type": ["string", "null"],
+      "pattern": "^\\+?[0-9]{8,15}$",
+      "description": "Optional admin WhatsApp number for auditing."
+    }
+  }
+}

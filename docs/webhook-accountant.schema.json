@@ -1,0 +1,374 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmd.local/schemas/accountant-webhook-request.json",
+  "title": "AccountantWebhookRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["action", "senderPhone", "payload"],
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "CREATE_PM_ADVANCE",
+        "CREATE_STAFF_ADVANCE",
+        "UPDATE_STAFF_ADVANCE",
+        "DELETE_STAFF_ADVANCE",
+        "RECORD_ACCOUNTING_NOTE",
+        "PAY_INVOICE",
+        "CREATE_PAYROLL",
+        "PAY_PAYROLL",
+        "LIST_UNIT_EXPENSES",
+        "LIST_INVOICES",
+        "SEARCH_STAFF",
+        "LIST_STAFF_ADVANCES",
+        "SEARCH_ACCOUNTING_NOTES"
+      ]
+    },
+    "senderPhone": {
+      "type": "string",
+      "pattern": "^\\+?[0-9]{8,15}$",
+      "description": "WhatsApp number for the accountant or admin using the accountant webhook."
+    },
+    "payload": {
+      "type": "object",
+      "description": "Action-specific parameters selected via conditional schemas."
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "action": { "const": "CREATE_PM_ADVANCE" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/createPmAdvance" } } }
+    },
+    {
+      "if": { "properties": { "action": { "const": "CREATE_STAFF_ADVANCE" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/createStaffAdvance" } } }
+    },
+    {
+      "if": { "properties": { "action": { "const": "UPDATE_STAFF_ADVANCE" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/updateStaffAdvance" } } }
+    },
+    {
+      "if": { "properties": { "action": { "const": "DELETE_STAFF_ADVANCE" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/deleteStaffAdvance" } } }
+    },
+    {
+      "if": { "properties": { "action": { "const": "RECORD_ACCOUNTING_NOTE" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/recordAccountingNote" } } }
+    },
+    {
+      "if": { "properties": { "action": { "const": "PAY_INVOICE" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/payInvoice" } } }
+    },
+    {
+      "if": { "properties": { "action": { "const": "CREATE_PAYROLL" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/createPayroll" } } }
+    },
+    {
+      "if": { "properties": { "action": { "const": "PAY_PAYROLL" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/payPayroll" } } }
+    },
+    {
+      "if": { "properties": { "action": { "const": "LIST_UNIT_EXPENSES" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/listUnitExpenses" } } }
+    },
+    {
+      "if": { "properties": { "action": { "const": "LIST_INVOICES" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/listInvoices" } } }
+    },
+    {
+      "if": { "properties": { "action": { "const": "SEARCH_STAFF" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/searchStaff" } } }
+    }
+    {
+      "if": { "properties": { "action": { "const": "LIST_STAFF_ADVANCES" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/listStaffAdvances" } } }
+    },
+    {
+      "if": { "properties": { "action": { "const": "SEARCH_ACCOUNTING_NOTES" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/searchAccountingNotes" } } }
+    }
+  ],
+  "$defs": {
+    "amountValue": {
+      "type": ["number", "string"],
+      "pattern": "^[0-9]+(\\.[0-9]{1,2})?$",
+      "description": "Positive currency value. String form allows up to two decimals."
+    },
+    "nullableString": {
+      "type": ["string", "null"]
+    },
+    "createPmAdvance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["amount"],
+      "properties": {
+        "amount": { "$ref": "#/$defs/amountValue" },
+        "staffId": { "$ref": "#/$defs/nullableString" },
+        "staffQuery": { "$ref": "#/$defs/nullableString" },
+        "projectId": { "$ref": "#/$defs/nullableString" },
+        "notes": { "$ref": "#/$defs/nullableString" }
+      },
+      "anyOf": [
+        { "required": ["staffId"] },
+        { "required": ["staffQuery"] }
+      ]
+    },
+    "createStaffAdvance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["amount"],
+      "properties": {
+        "amount": { "$ref": "#/$defs/amountValue" },
+        "staffId": { "$ref": "#/$defs/nullableString" },
+        "staffQuery": { "$ref": "#/$defs/nullableString" },
+        "note": { "$ref": "#/$defs/nullableString" }
+      },
+      "anyOf": [
+        { "required": ["staffId"] },
+        { "required": ["staffQuery"] }
+      ]
+    },
+    "updateStaffAdvance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["advanceId"],
+      "properties": {
+        "advanceId": { "type": "string" },
+        "amount": { "$ref": "#/$defs/amountValue" },
+        "note": { "$ref": "#/$defs/nullableString" },
+        "staffQuery": { "$ref": "#/$defs/nullableString" }
+      },
+      "anyOf": [
+        { "required": ["amount"] },
+        { "required": ["note"] }
+      ]
+    },
+    "deleteStaffAdvance": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["advanceId"],
+      "properties": {
+        "advanceId": { "type": "string" },
+        "staffQuery": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "recordAccountingNote": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["noteId"],
+      "properties": {
+        "noteId": { "type": "string" },
+        "sourceType": {
+          "type": ["string", "null"],
+          "enum": ["OFFICE_FUND", "PM_ADVANCE", null]
+        },
+        "pmAdvanceId": { "$ref": "#/$defs/nullableString" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "sourceType": { "const": "PM_ADVANCE" }
+            },
+            "required": ["sourceType"]
+          },
+          "then": {
+            "required": ["pmAdvanceId"]
+          }
+        }
+      ]
+    },
+    "payInvoice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["invoiceId"],
+      "properties": {
+        "invoiceId": { "type": "string" },
+        "amount": { "$ref": "#/$defs/amountValue" },
+        "action": {
+          "type": ["string", "null"],
+          "enum": ["pay", "mark-paid", null],
+          "default": "pay"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "action": { "enum": ["pay", null] }
+            }
+          },
+          "then": {
+            "required": ["amount"]
+          }
+        }
+      ]
+    },
+    "createPayroll": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["month"],
+      "properties": {
+        "month": {
+          "type": "string",
+          "pattern": "^[0-9]{4}-[0-9]{2}$"
+        }
+      }
+    },
+    "payPayroll": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["payrollId"],
+      "properties": {
+        "payrollId": { "type": "string" }
+      }
+    },
+    "listUnitExpenses": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": { "$ref": "#/$defs/nullableString" },
+        "projectName": {
+          "$ref": "#/$defs/nullableString",
+          "description": "اسم المشروع للبحث النصي. لو اتبعت بدون projectId بيحاول يلاقي أقرب تطابق."
+        },
+        "unitCode": {
+          "$ref": "#/$defs/nullableString",
+          "description": "كود الوحدة داخل المشروع المحدد. لو المشروع متحدد بيتحقق إن الكود تابع لنفس المشروع."
+        },
+        "limit": {
+          "type": ["integer", "string"],
+          "minimum": 1,
+          "description": "أقصى عدد مصروفات يتم إرجاعه (الافتراضي منطقياً 25 والحد الأعلى 100)."
+        },
+        "sourceTypes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["TECHNICIAN_WORK", "STAFF_WORK", "ELECTRICITY", "OTHER"]
+          },
+          "uniqueItems": true,
+          "description": "تصفية حسب نوع المصدر. بيتقاطع تلقائياً مع الأنواع اللي اتعرفت من search tokens."
+        },
+        "search": {
+          "$ref": "#/$defs/nullableString",
+          "description": "بحث حر. النظام بيحلل الكلمات (مثلاً: \"زينة جرين\") عشان يستنتج الأنواع والكلمات المفتاحية للوصف."
+        },
+        "fromDate": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "description": "تاريخ البداية بصيغة YYYY-MM-DD. بيستخدم الساعة 00:00 تلقائياً."
+        },
+        "toDate": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "description": "تاريخ النهاية بصيغة YYYY-MM-DD. بيستخدم الساعة 23:59 تلقائياً."
+        },
+        "filterDsl": {
+          "$ref": "#/$defs/nullableString",
+          "description": "فلتر متقدم بنفس صيغة DSL المستخدمة في لوحة المصروفات (مثلاً: source=OTHER AND amount>500)."
+        }
+      }
+    },
+    "searchStaff": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["query"],
+      "properties": {
+        "query": {
+          "type": "string",
+          "minLength": 1
+        },
+        "projectId": { "$ref": "#/$defs/nullableString" },
+        "limit": {
+          "type": ["integer", "string"],
+          "minimum": 1
+        },
+        "onlyWithPendingAdvances": {
+          "type": ["boolean", "null"]
+        }
+      }
+    },
+    "listStaffAdvances": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "query": { "$ref": "#/$defs/nullableString" },
+        "status": {
+          "type": ["string", "null"],
+          "enum": ["PENDING", "DEDUCTED", "ALL", null],
+          "default": "ALL"
+        },
+        "projectId": { "$ref": "#/$defs/nullableString" },
+        "limit": {
+          "type": ["integer", "string"],
+          "minimum": 1
+        }
+      }
+    },
+    "searchAccountingNotes": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "query": { "$ref": "#/$defs/nullableString" },
+        "status": {
+          "type": ["string", "null"],
+          "enum": ["PENDING", "CONVERTED", "REJECTED", "ALL", null],
+          "default": "PENDING"
+        },
+        "projectId": { "$ref": "#/$defs/nullableString" },
+        "unitCode": { "$ref": "#/$defs/nullableString" },
+        "limit": {
+          "type": ["integer", "string"],
+          "minimum": 1
+        },
+        "includeConverted": {
+          "type": ["boolean", "null"]
+        }
+      }
+    },
+    "listInvoices": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": { "$ref": "#/$defs/nullableString" },
+        "projectName": {
+          "$ref": "#/$defs/nullableString",
+          "description": "اسم المشروع للبحث النصي. لو اتبعت بدون projectId بيحاول يلاقي أقرب تطابق."
+        },
+        "unitCode": {
+          "$ref": "#/$defs/nullableString",
+          "description": "كود الوحدة. لو المشروع متحدد بيتحقق إن الكود تابع لنفس المشروع."
+        },
+        "isPaid": {
+          "type": ["boolean", "null"],
+          "description": "فلتر حسب حالة الدفع. true=مدفوعة، false=غير مدفوعة، null أو omit=الكل."
+        },
+        "invoiceType": {
+          "type": ["string", "null"],
+          "enum": ["CLAIM", null],
+          "description": "نوع الفاتورة. الافتراضي CLAIM للفواتير المحاسبية."
+        },
+        "limit": {
+          "type": ["integer", "string"],
+          "minimum": 1,
+          "description": "أقصى عدد فواتير يتم إرجاعه (الافتراضي 25 والحد الأعلى 100)."
+        },
+        "fromDate": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "description": "تاريخ البداية بصيغة YYYY-MM-DD."
+        },
+        "toDate": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$",
+          "description": "تاريخ النهاية بصيغة YYYY-MM-DD."
+        },
+        "filterDsl": {
+          "$ref": "#/$defs/nullableString",
+          "description": "فلتر متقدم بصيغة DSL (مثلاً: isPaid=false AND type=CLAIM)."
+        }
+      }
+    }
+  }
+}

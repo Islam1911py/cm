@@ -1,0 +1,182 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://cmd.local/schemas/project-manager-webhook-request.json",
+  "title": "ProjectManagerWebhookRequest",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["action", "senderPhone", "payload"],
+  "properties": {
+    "action": {
+      "type": "string",
+      "enum": [
+        "CREATE_OPERATIONAL_EXPENSE",
+        "GET_RESIDENT_PHONE",
+        "LIST_PROJECT_TICKETS",
+        "LIST_PROJECT_UNITS",
+        "LIST_UNIT_EXPENSES",
+        "GET_LAST_ELECTRICITY_TOPUP"
+      ]
+    },
+    "senderPhone": {
+      "type": "string",
+      "pattern": "^\\+?[0-9]{8,15}$",
+      "description": "WhatsApp number for the project manager invoking the webhook."
+    },
+    "payload": {
+      "type": "object",
+      "description": "Action-specific parameters resolved through conditional schemas."
+    }
+  },
+  "allOf": [
+    {
+      "if": { "properties": { "action": { "const": "CREATE_OPERATIONAL_EXPENSE" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/createOperationalExpense" } } }
+    },
+    {
+      "if": { "properties": { "action": { "const": "GET_RESIDENT_PHONE" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/getResidentPhone" } } }
+    },
+    {
+      "if": { "properties": { "action": { "const": "LIST_PROJECT_TICKETS" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/listProjectTickets" } } }
+    },
+    {
+      "if": { "properties": { "action": { "const": "LIST_PROJECT_UNITS" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/listProjectUnits" } } }
+    },
+    {
+      "if": { "properties": { "action": { "const": "LIST_UNIT_EXPENSES" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/listUnitExpenses" } } }
+    },
+    {
+      "if": { "properties": { "action": { "const": "GET_LAST_ELECTRICITY_TOPUP" } } },
+      "then": { "properties": { "payload": { "$ref": "#/$defs/getLastElectricityTopup" } } }
+    }
+  ],
+  "$defs": {
+    "amountValue": {
+      "type": ["number", "string"],
+      "pattern": "^[0-9]+(\\.[0-9]{1,2})?$",
+      "description": "Positive currency value. String form supports up to two decimals."
+    },
+    "nullableString": {
+      "type": ["string", "null"]
+    },
+    "nullableBoolean": {
+      "type": ["boolean", "null"]
+    },
+    "limitValue": {
+      "type": ["integer", "string"],
+      "minimum": 1
+    },
+    "createOperationalExpense": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["projectId", "unitCode", "description", "amount", "sourceType"],
+      "properties": {
+        "projectId": { "type": "string" },
+        "unitCode": { "type": "string" },
+        "description": { "type": "string", "minLength": 1 },
+        "amount": { "$ref": "#/$defs/amountValue" },
+        "sourceType": {
+          "type": "string",
+          "enum": ["OFFICE_FUND", "PM_ADVANCE"]
+        },
+        "pmAdvanceId": { "$ref": "#/$defs/nullableString" },
+        "recordedAt": {
+          "type": ["string", "null"],
+          "format": "date-time"
+        }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": {
+              "sourceType": { "const": "PM_ADVANCE" }
+            }
+          },
+          "then": {
+            "required": ["pmAdvanceId"]
+          }
+        }
+      ]
+    },
+    "getResidentPhone": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["projectId", "unitCode"],
+      "properties": {
+        "projectId": { "type": "string" },
+        "unitCode": { "type": "string" },
+        "residentName": { "$ref": "#/$defs/nullableString" },
+        "limit": { "$ref": "#/$defs/limitValue" }
+      }
+    },
+    "listProjectTickets": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["projectId"],
+      "properties": {
+        "projectId": { "type": "string" },
+        "unitCode": { "$ref": "#/$defs/nullableString" },
+        "statuses": {
+          "type": ["array", "null"],
+          "items": { "type": "string" },
+          "uniqueItems": true
+        },
+        "limit": { "$ref": "#/$defs/limitValue" }
+      }
+    },
+    "listProjectUnits": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["projectId"],
+      "properties": {
+        "projectId": { "type": "string" },
+        "includeInactive": { "$ref": "#/$defs/nullableBoolean" },
+        "limit": { "$ref": "#/$defs/limitValue" },
+        "search": { "$ref": "#/$defs/nullableString" }
+      }
+    },
+    "listUnitExpenses": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "projectId": { "$ref": "#/$defs/nullableString" },
+        "projectName": { "$ref": "#/$defs/nullableString" },
+        "unitCode": { "$ref": "#/$defs/nullableString" },
+        "limit": { "$ref": "#/$defs/limitValue" },
+        "sourceTypes": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "enum": ["TECHNICIAN_WORK", "STAFF_WORK", "ELECTRICITY", "OTHER"]
+          },
+          "uniqueItems": true
+        },
+        "search": { "$ref": "#/$defs/nullableString" },
+        "fromDate": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        },
+        "toDate": {
+          "type": ["string", "null"],
+          "pattern": "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"
+        }
+      },
+      "anyOf": [
+        { "required": ["projectId"] },
+        { "required": ["projectName"] }
+      ]
+    },
+    "getLastElectricityTopup": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["projectId"],
+      "properties": {
+        "projectId": { "type": "string" },
+        "unitCode": { "$ref": "#/$defs/nullableString" }
+      }
+    }
+  }
+}

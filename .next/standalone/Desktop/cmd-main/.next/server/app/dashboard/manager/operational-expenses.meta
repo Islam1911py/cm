@@ -1,0 +1,17 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/dashboard/layout,_N_T_/dashboard/manager/layout,_N_T_/dashboard/manager/operational-expenses/layout,_N_T_/dashboard/manager/operational-expenses/page,_N_T_/dashboard/manager/operational-expenses"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/dashboard/manager/operational-expenses/__PAGE__",
+    "/dashboard/manager/operational-expenses",
+    "/dashboard/manager",
+    "/dashboard",
+    "/_index",
+    "/_head"
+  ]
+}

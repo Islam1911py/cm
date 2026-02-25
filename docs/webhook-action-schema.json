@@ -1,0 +1,233 @@
+Webhook Actions Overview
+========================
+
+The system exposes webhooks grouped by role. Use the sections below to pick the right endpoint, understand what each action does, and what parameters you must supply.
+
+-------------------------------------------------------------------------------
+Project Manager Toolkit
+-------------------------------------------------------------------------------
+
+Authentication: X-API-KEY for a PROJECT_MANAGER, senderPhone must match the manager’s WhatsApp.
+
+1. POST /api/webhooks/project-managers — action-based endpoint
+   - Shared envelope fields for every call:
+     * action: name of the operation to run
+     * senderPhone: manager phone number (WhatsApp format)
+     * payload: object carrying action specific data
+   - Supported actions:
+     • CREATE_OPERATIONAL_EXPENSE — raise an operational expense for accounting
+       Required payload fields: projectId, unitCode, description, amount, sourceType
+       Optional: pmAdvanceId (mandatory when sourceType = PM_ADVANCE), recordedAt
+       Usage: manager logs spending for unit/project; accounting receives it for approval.
+     • GET_RESIDENT_PHONE — pull contact info for a resident
+       Required: projectId, unitCode
+       Optional: residentName, limit (default 1)
+       Usage: manager needs to call a resident linked to a unit.
+     • LIST_PROJECT_TICKETS — list maintenance/support tickets
+       Required: projectId
+       Optional: unitCode, statuses[], limit
+       Usage: overview of open/closed tickets for chosen project.
+     • LIST_PROJECT_UNITS — show operational units
+       Required: projectId
+       Optional: includeInactive, limit, search
+       Usage: confirm units manager can access or filter by keyword.
+     • LIST_UNIT_EXPENSES — get expenses for units under manager scope
+       Required: projectId (or projectName)
+       Optional: unitCode, limit, sourceTypes[], search, fromDate, toDate
+       Usage: audit recent costs for a unit or date range.
+     • GET_LAST_ELECTRICITY_TOPUP — latest electricity top-up entry
+       Required: projectId
+       Optional: unitCode
+       Usage: check when a unit last topped up electricity.
+
+   JSON schema: see [docs/webhook-project-manager.schema.json](docs/webhook-project-manager.schema.json).
+
+2. GET /api/webhooks/query — manager queries (type driven)
+   - Always include senderPhone (optional but recommended) and required fields per query.
+   - LAST_EXPENSE: type=LAST_EXPENSE, projectId required; optional range (TODAY/WEEK/MONTH), date, unit.
+   - PROJECT_DATA: type=PROJECT_DATA (defaults if omitted), projectId required.
+   - TICKET_BY_RESIDENT: type=TICKET_BY_RESIDENT, projectId, resident required.
+   - TODAY_TICKETS: type=TODAY_TICKETS, projectId required.
+   - Purpose: quick summaries without constructing payload objects.
+
+-------------------------------------------------------------------------------
+Accountant Toolkit
+-------------------------------------------------------------------------------
+
+Authentication: X-API-KEY for ACCOUNTANT or ADMIN acting as accountant, senderPhone is accountant line.
+
+1. POST /api/webhooks/accountants — action-based endpoint
+   - Shared envelope: action, senderPhone, payload (same structure as manager endpoint).
+   - Actions:
+     • CREATE_PM_ADVANCE — create advance for a project manager
+       Required payload: amount and one of (staffId | staffQuery)
+       Optional: projectId, notes
+       Usage: provide funds to a manager; agent can use staffQuery for fuzzy name.
+     • CREATE_STAFF_ADVANCE — pending advance for a staff member
+       Required: amount plus (staffId | staffQuery)
+       Optional: note
+       Usage: record employee advance before payroll deduction.
+     • UPDATE_STAFF_ADVANCE — adjust pending advance
+       Required: advanceId and at least one of (amount | note)
+       Optional: staffQuery
+       Usage: change amount or annotate reason.
+     • DELETE_STAFF_ADVANCE — remove pending advance
+       Required: advanceId
+       Optional: staffQuery
+       Usage: cancel mistakes before payroll deducts it.
+     • RECORD_ACCOUNTING_NOTE — convert accounting note into expense + invoice
+       Required: noteId
+       Optional: sourceType (OFFICE_FUND | PM_ADVANCE), pmAdvanceId when sourceType = PM_ADVANCE
+       Usage: formalize a note into the books.
+     • PAY_INVOICE — register payment or mark invoice paid
+       Required: invoiceId
+       Optional: amount, action (pay | mark-paid)
+       Usage: partial payment (pay + amount) or full close-out (mark-paid).
+     • CREATE_PAYROLL — generate payroll for month
+       Required: month (YYYY-MM)
+       Usage: initiates payroll computation; fails if month exists.
+     • PAY_PAYROLL — mark payroll paid
+       Required: payrollId
+       Usage: finalizes payroll and deducts advances.
+     • LIST_UNIT_EXPENSES — accountant view of unit expenses
+       Optional: projectId, projectName, unitCode, limit, sourceTypes[], search, fromDate, toDate
+       Usage: deeper filters than manager view, includes more data.
+     • SEARCH_STAFF — fuzzy staff search
+       Required: query
+       Optional: projectId, limit, onlyWithPendingAdvances
+       Usage: identify employees and check advance load.
+     • LIST_STAFF_ADVANCES — list advances with filters
+       Optional: query, status (PENDING/DEDUCTED/ALL), projectId, limit
+       Usage: produce reports or chase pending amounts.
+     • SEARCH_ACCOUNTING_NOTES — search accounting notes
+       Optional: query, status, projectId, unitCode, limit, includeConverted
+       Usage: find specific notes by text or state.
+
+   JSON schema: see [docs/webhook-accountant.schema.json](docs/webhook-accountant.schema.json).
+
+2. GET /api/webhooks/query — accountant query endpoint
+   - ACCOUNTING_DATA: type=ACCOUNTING_DATA (or omit to default), optional senderPhone.
+   - Provides invoices, payments, pending accounting notes, plus stats for dashboards.
+
+-------------------------------------------------------------------------------
+Admin Toolkit
+-------------------------------------------------------------------------------
+
+Authentication: X-API-KEY for ADMIN. Admins may also call accountant actions above.
+
+1. GET /api/webhooks/query — platform snapshot
+   - ALL_DATA: type=ALL_DATA (defaults when missing), optional senderPhone.
+   - Returns counts and aggregates across projects, units, residents, tickets, invoices, staff.
+
+   JSON schema: see [docs/webhook-admin.schema.json](docs/webhook-admin.schema.json).
+
+-------------------------------------------------------------------------------
+Shared Utilities (All Roles)
+-------------------------------------------------------------------------------
+
+1. POST /api/webhooks/query/interpret
+   - Purpose: send natural-language question; interpreter replies with recommended actions.
+   - Required body: question (string)
+   - Optional: projectName (helps tie question to project), role (ADMIN | ACCOUNTANT | PROJECT_MANAGER)
+
+2. POST /api/webhooks/identity
+   - Purpose: resolve contact/person details.
+   - Provide at least one of: phone, senderPhone, contact, query.
+   - Returns matched managed users or resident data.
+
+-------------------------------------------------------------------------------
+Usage Notes
+-------------------------------------------------------------------------------
+
+- senderPhone should always be the WhatsApp number formatted with optional leading + and 8-15 digits.
+- amount fields accept either numeric values or strings representing positive decimals.
+- limit fields accept numeric values; if omitted, defaults vary by handler.
+- All dates use ISO format YYYY-MM-DD; recordedAt supports full ISO date-time.
+- For multilingual prompts, make sure to pass clear action names in English as shown above.
+            },
+            {
+              "url": "/api/webhooks/query",
+              "method": "GET",
+              "authentication": "X-API-KEY header tied to an ACCOUNTANT or ADMIN user",
+              "queryTypes": [
+                {
+                  "name": "ACCOUNTING_DATA",
+                  "description": "Finance snapshot with invoices, payments, and pending accounting notes.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "type": { "type": "string", "enum": ["ACCOUNTING_DATA", "DEFAULT"] },
+                      "senderPhone": { "type": ["string", "null"], "pattern": "^\\+?[0-9]{8,15}$" }
+                    },
+                    "required": ["type"],
+                    "additionalProperties": true
+                  },
+                  "notes": [
+                    "If type is omitted the handler defaults to ACCOUNTING_DATA for accountant keys.",
+                    "Responses include statistics plus invoice and pending-note collections."
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    },
+    "shared": {
+      "type": "object",
+      "properties": {
+        "endpoints": {
+          "type": "array",
+          "items": [
+            {
+              "url": "/api/webhooks/query/interpret",
+              "method": "POST",
+              "authentication": "X-API-KEY header tied to any managed role",
+              "requestSchema": {
+                "type": "object",
+                "required": ["question"],
+                "additionalProperties": false,
+                "properties": {
+                  "question": { "type": "string", "minLength": 1 },
+                  "projectName": { "type": ["string", "null"] },
+                  "role": { "type": ["string", "null"], "enum": ["ADMIN", "ACCOUNTANT", "PROJECT_MANAGER", null] }
+                }
+              },
+              "notes": [
+                "If role is omitted the interpreter relies on the API key context.",
+                "projectName can disambiguate when the question does not mention the project explicitly."
+              ]
+            },
+            {
+              "url": "/api/webhooks/identity",
+              "method": "POST",
+              "authentication": "X-API-KEY header tied to any managed role",
+              "requestSchema": {
+                "type": "object",
+                "properties": {
+                  "phone": { "type": ["string", "null"], "pattern": "^\\+?[0-9]{8,15}$" },
+                  "senderPhone": { "type": ["string", "null"], "pattern": "^\\+?[0-9]{8,15}$" },
+                  "contact": { "type": ["string", "null"] },
+                  "query": { "type": ["string", "null"] }
+                },
+                "anyOf": [
+                  { "required": ["phone"] },
+                  { "required": ["senderPhone"] },
+                  { "required": ["contact"] },
+                  { "required": ["query"] }
+                ],
+                "additionalProperties": false
+              },
+              "notes": [
+                "At least one identifier must be provided.",
+                "The resolver checks managed users first, then residents using phone variants."
+              ]
+            }
+          ]
+        }
+      },
+      "required": ["endpoints"]
+    }
+  },
+  "required": ["roles", "shared"]
+}

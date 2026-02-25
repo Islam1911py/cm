@@ -1,0 +1,887 @@
+# الإدارة على واتساب - دليل العمليات الكامل
+
+> **الغرض:** توثيق شامل لجميع العمليات التي يمكن للإدارة تنفيذها عبر واتساب (تشمل جميع عمليات المحاسب + عمليات إدارية إضافية)
+
+---
+
+## 📋 جدول المحتويات
+
+1. [عمليات القراءة (مشتركة مع المحاسب)](#عمليات-القراءة-مشتركة-مع-المحاسب)
+2. [إدارة السلفات](#إدارة-السلفات)
+3. [إدارة الفواتير](#إدارة-الفواتير)
+4. [إدارة الرواتب](#إدارة-الرواتب)
+5. [العمليات الإدارية المتقدمة](#العمليات-الإدارية-المتقدمة)
+6. [استخدام DSL Filter](#استخدام-dsl-filter)
+7. [Prompt للـ Agent](#prompt-للـ-agent)
+
+---
+
+## عمليات القراءة (مشتركة مع المحاسب)
+
+### SEARCH_STAFF - البحث عن موظف
+
+**الوصف:** البحث عن موظف باسم أو جزء من الاسم (البحث يشمل جميع المشاريع)
+
+**المتطلبات:**
+- `query` - اسم أو جزء من اسم الموظف
+
+**الاختيارية:**
+- `projectId` - تصفية حسب المشروع (اختياري للإدارة)
+- `onlyWithPendingAdvances` - إظهار فقط الموظفين بهم سلفات معلقة
+- `limit` - عدد النتائج (افتراضي: 10)
+
+**Request Payload:**
+```json
+{
+  "action": "SEARCH_STAFF",
+  "senderPhone": "+201001234567",
+  "payload": {
+    "query": "محمد علي",
+    "onlyWithPendingAdvances": true,
+    "limit": 20
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "matches": [
+      {
+        "id": "staff-001",
+        "name": "محمد علي أحمد",
+        "projectName": "المشروع الأخضر",
+        "unitCode": "A1",
+        "score": 98,
+        "pendingAdvanceCount": 2,
+        "pendingAdvanceAmount": 7500,
+        "pendingAdvanceIds": ["adv-001", "adv-002"]
+      }
+    ]
+  },
+  "humanReadable": {
+    "ar": "تم العثور على 1 موظف مطابق للبحث"
+  }
+}
+```
+
+---
+
+### LIST_UNIT_EXPENSES - قائمة مصروفات الوحدة
+
+**الوصف:** الحصول على قائمة المصروفات ومذكرات المحاسبة (الإدارة ترى جميع المشاريع)
+
+**الاختيارية:**
+- `projectId` أو `projectName` - تصفية حسب المشروع
+- `unitCode` - كود الوحدة
+- `sourceTypes` - أنواع المصروفات
+- `search` - بحث نصي
+- `fromDate` - تاريخ البداية
+- `toDate` - تاريخ النهاية
+- `filterDsl` - فلتر متقدم
+- `limit` - عدد النتائج
+
+**Request Payload:**
+```json
+{
+  "action": "LIST_UNIT_EXPENSES",
+  "payload": {
+    "projectId": "green-project-id",
+    "unitCode": "A1",
+    "fromDate": "2026-01-01",
+    "toDate": "2026-02-19",
+    "limit": 30
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "expenses": [
+      {
+        "id": "exp-001",
+        "date": "2026-02-15",
+        "description": "صيانة الأنابيب",
+        "amount": 1500,
+        "sourceType": "TECHNICIAN_WORK"
+      }
+    ]
+  },
+  "meta": {
+    "total": 1,
+    "totalAmount": 1500
+  }
+}
+```
+
+---
+
+### LIST_INVOICES - قائمة الفواتير
+
+**الوصف:** الحصول على قائمة جميع الفواتير (الإدارة ترى جميع المشاريع والوحدات)
+
+**الاختيارية:**
+- `projectId` أو `projectName` - المشروع
+- `unitCode` - الوحدة
+- `isPaid` - حالة السداد
+- `invoiceType` - نوع الفاتورة
+- `fromDate` - من تاريخ
+- `toDate` - إلى تاريخ
+- `filterDsl` - فلتر متقدم
+- `limit` - عدد النتائج
+
+**Request Payload:**
+```json
+{
+  "action": "LIST_INVOICES",
+  "payload": {
+    "isPaid": false,
+    "limit": 100
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "invoices": [
+      {
+        "id": "inv-001",
+        "unitCode": "A1",
+        "projectName": "المشروع الأخضر",
+        "type": "CLAIM",
+        "totalAmount": 3500,
+        "amountPaid": 0,
+        "remainingBalance": 3500,
+        "isPaid": false,
+        "issuedAt": "2026-02-10"
+      }
+    ]
+  },
+  "meta": {
+    "total": 1,
+    "totalAmount": 3500,
+    "totalRemaining": 3500
+  }
+}
+```
+
+---
+
+### LIST_STAFF_ADVANCES - قائمة السلفات
+
+**الوصف:** الحصول على قائمة مفصلة بسلفات الموظفين والمهندسين
+
+**الاختيارية:**
+- `query` - البحث برجاء/اسم الموظف
+- `status` - الحالة: PENDING أو DEDUCTED أو ALL
+- `projectId` - تصفية حسب المشروع
+- `limit` - عدد النتائج
+
+**Request Payload:**
+```json
+{
+  "action": "LIST_STAFF_ADVANCES",
+  "payload": {
+    "status": "PENDING",
+    "limit": 50
+  }
+}
+```
+
+---
+
+### SEARCH_ACCOUNTING_NOTES - البحث عن مذكرات المحاسبة
+
+**الوصف:** البحث عن مذكرات المحاسبة حسب الوصف أو الحالة
+
+**الاختيارية:**
+- `query` - نص البحث
+- `status` - الحالة: PENDING, CONVERTED, REJECTED, ALL
+- `projectId` - المشروع
+- `unitCode` - الوحدة
+- `includeConverted` - تضمين المذكرات المحولة
+- `limit` - عدد النتائج
+
+**Request Payload:**
+```json
+{
+  "action": "SEARCH_ACCOUNTING_NOTES",
+  "payload": {
+    "status": "PENDING",
+    "limit": 50
+  }
+}
+```
+
+---
+
+## إدارة السلفات
+
+### CREATE_PM_ADVANCE - إنشاء سلفة مهندس
+
+**الوصف:** إعطاء سلفة نقدية لمهندس من أجل مشروع معين
+
+**المتطلبات:**
+- `amount` - المبلغ المراد إعطاؤه
+- `staffQuery` أو `staffId` - اسم أو ID المهندس
+
+**الاختيارية:**
+- `projectId` - معرف المشروع
+- `notes` - ملاحظات إضافية
+
+**Request Payload:**
+```json
+{
+  "action": "CREATE_PM_ADVANCE",
+  "senderPhone": "+201001234567",
+  "payload": {
+    "staffQuery": "محمد علي",
+    "amount": 5000,
+    "projectId": "green-project-id",
+    "notes": "سلفة لشراء مواد البناء"
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "advanceId": "adv-12345",
+    "staffName": "محمد علي",
+    "amount": 5000,
+    "projectName": "المشروع الأخضر",
+    "status": "PENDING",
+    "createdAt": "2026-02-19T10:30:00Z"
+  },
+  "humanReadable": {
+    "ar": "تم إعطاء سلفة بقيمة 5000 جنيه لمحمد علي"
+  }
+}
+```
+
+---
+
+### CREATE_STAFF_ADVANCE - إنشاء سلفة موظف
+
+**الوصف:** إعطاء سلفة لموظف عام أو إداري
+
+**المتطلبات:**
+- `amount` - المبلغ
+- `staffQuery` أو `staffId` - اسم أو ID الموظف
+
+**الاختيارية:**
+- `note` - ملاحظة
+
+**Request Payload:**
+```json
+{
+  "action": "CREATE_STAFF_ADVANCE",
+  "payload": {
+    "staffQuery": "فاطمة محمود",
+    "amount": 2000,
+    "note": "سلفة الراتب الشهري"
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "advanceId": "adv-67890",
+    "staffName": "فاطمة محمود",
+    "amount": 2000,
+    "status": "PENDING"
+  },
+  "humanReadable": {
+    "ar": "تم تسجيل سلفة 2000 جنيه للموظف فاطمة محمود"
+  }
+}
+```
+
+---
+
+### UPDATE_STAFF_ADVANCE - تعديل السلفة
+
+**الوصف:** تعديل مبلغ أو تفاصيل سلفة موجودة
+
+**المتطلبات:**
+- `advanceId` - معرف السلفة
+
+**الاختيارية:**
+- `amount` - المبلغ الجديد
+- `note` - ملاحظة جديدة
+
+**Request Payload:**
+```json
+{
+  "action": "UPDATE_STAFF_ADVANCE",
+  "payload": {
+    "advanceId": "adv-67890",
+    "amount": 2500
+  }
+}
+```
+
+---
+
+### DELETE_STAFF_ADVANCE - حذف السلفة
+
+**الوصف:** حذف سلفة لم يتم استخدامها بعد
+
+**المتطلبات:**
+- `advanceId` - معرف السلفة
+
+**Request Payload:**
+```json
+{
+  "action": "DELETE_STAFF_ADVANCE",
+  "payload": {
+    "advanceId": "adv-67890"
+  }
+}
+```
+
+---
+
+## إدارة الفواتير
+
+### RECORD_ACCOUNTING_NOTE - تحويل مذكرة لفاتورة
+
+**الوصف:** تحويل مذكرة محاسبة (مصروفات مسجلة) إلى فاتورة رسمية
+
+**المتطلبات:**
+- `noteId` - معرف المذكرة
+
+**الاختيارية:**
+- `sourceType` - مصدر التمويل: OFFICE_FUND أو PM_ADVANCE
+- `pmAdvanceId` - معرف السلفة (إذا كان sourceType = PM_ADVANCE)
+
+**Request Payload:**
+```json
+{
+  "action": "RECORD_ACCOUNTING_NOTE",
+  "payload": {
+    "noteId": "note-abc123",
+    "sourceType": "OFFICE_FUND"
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "invoiceId": "inv-12345",
+    "noteId": "note-abc123",
+    "convertedAmount": 3500,
+    "invoiceType": "CLAIM"
+  },
+  "humanReadable": {
+    "ar": "تم تحويل المذكرة إلى فاتورة بقيمة 3500 جنيه"
+  }
+}
+```
+
+---
+
+### PAY_INVOICE - دفع الفاتورة
+
+**الوصف:** دفع فاتورة أو جزء منها
+
+**المتطلبات:**
+- `invoiceId` - معرف الفاتورة
+
+**الاختيارية:**
+- `amount` - المبلغ المراد دفعه
+- `action` - نوع الدفع: "pay" (دفع تدريجي) أو "mark-paid" (تسديد كامل)
+
+**Request Payload:**
+```json
+{
+  "action": "PAY_INVOICE",
+  "payload": {
+    "invoiceId": "inv-12345",
+    "amount": 5000,
+    "action": "pay"
+  }
+}
+```
+
+**Response:**
+```json
+{
+  "success": true,
+  "data": {
+    "invoiceId": "inv-12345",
+    "amountPaid": 5000,
+    "remainingBalance": 0,
+    "status": "PAID"
+  },
+  "humanReadable": {
+    "ar": "تم دفع 5000 جنيه للفاتورة رقم inv-12345"
+  }
+}
+```
+
+---
+
+## إدارة الرواتب
+
+### CREATE_PAYROLL - إنشاء كشف رواتب
+
+**الوصف:** إنشاء كشف رواتب لشهر معين
+
+**المتطلبات:**
+- `month` - الشهر بصيغة YYYY-MM (مثل 2026-02)
+
+**Request Payload:**
+```json
+{
+  "action": "CREATE_PAYROLL",
+  "payload": {
+    "month": "2026-02"
+  }
+}
+```
+
+---
+
+### PAY_PAYROLL - دفع الرواتب
+
+**الوصف:** تنفيذ دفع الرواتب لموظفي الشهر
+
+**المتطلبات:**
+- `payrollId` - معرف كشف الرواتب
+
+**Request Payload:**
+```json
+{
+  "action": "PAY_PAYROLL",
+  "payload": {
+    "payrollId": "payroll-2026-02"
+  }
+}
+```
+
+---
+
+## استخدام DSL Filter
+
+### ما هو DSL Filter؟
+
+وسيلة متقدمة للبحث والتصفية باستخدام تعابير منطقية بسيطة.
+
+### الفلاتر المدعومة
+
+#### للمصروفات (LIST_UNIT_EXPENSES):
+- `amount` - المبلغ (عددي)
+- `date` - التاريخ
+- `sourceType` - نوع المصروف
+- `projectId` / `projectName` - المشروع
+- `unitCode` - الوحدة
+
+#### للفواتير (LIST_INVOICES):
+- `isPaid` - حالة السداد (true/false)
+- `type` / `invoiceType` - نوع الفاتورة
+- `projectId` / `projectName` - المشروع
+- `unitCode` - الوحدة
+- `unitId` - معرف الوحدة
+
+### العوامل المدعومة
+
+```
+=      → مساوي
+!=     → غير مساوي
+>      → أكبر من
+>=     → أكبر من أو مساوي
+<      → أقل من
+<=     → أقل من أو مساوي
+IN     → من ضمن قائمة
+NOT IN → ليس من ضمن قائمة
+AND    → و (الكل يجب أن يكون صحيح)
+```
+
+### أمثلة
+
+#### مثال 1: جميع الفواتير غير المدفوعة
+```json
+{
+  "action": "LIST_INVOICES",
+  "payload": {
+    "filterDsl": "isPaid=false"
+  }
+}
+```
+
+#### مثال 2: الفواتير من مشروع محدد وغير مدفوعة
+```json
+{
+  "action": "LIST_INVOICES",
+  "payload": {
+    "filterDsl": "projectId=green-project-id AND isPaid=false"
+  }
+}
+```
+
+#### مثال 3: المصروفات فوق 1000 جنيه
+```json
+{
+  "action": "LIST_UNIT_EXPENSES",
+  "payload": {
+    "filterDsl": "amount > 1000"
+  }
+}
+```
+
+#### مثال 4: أعمال فنية أو كهرباء
+```json
+{
+  "action": "LIST_UNIT_EXPENSES",
+  "payload": {
+    "filterDsl": "sourceType IN [TECHNICIAN_WORK, ELECTRICITY]"
+  }
+}
+```
+
+#### مثال 5: بحث متقدم - فواتير وحدة محددة غير مدفوعة
+```json
+{
+  "action": "LIST_INVOICES",
+  "payload": {
+    "filterDsl": "unitCode=A1 AND isPaid=false"
+  }
+}
+```
+
+---
+
+## Prompt للـ Agent
+
+### استخدام العمليات في الـ Agent
+
+```text
+أنت مساعد ذكي للإدارة العليا عبر واتساب. صلاحياتك كاملة — ترى جميع المشاريع وتقدر تصحح وتحذف وتعدل.
+العملة دائماً جنيه مصري.
+
+---
+## 📌 بيانات الجلسة — مقدمة لك تلقائياً، لا تسأل عنها أبداً:
+
+المشاريع المتاحة:
+{{ $node["identity"].json.contact.projects.map(p => `- ${p.name} | ID: ${p.id}`).join('\n') }}
+
+الدور: {{ $node["identity"].json.contact.role }}
+رقم الواتساب: {{ $('identity').item.json.contact.whatsappPhone }}
+
+كيف تستخدم الـ context:
+- الإدارة ترى جميع المشاريع — لا تقيد بمشروع واحد ما لم يحدد المستخدم
+- لما يذكر اسم مشروع → ابحث في القائمة وخذ الـ ID مباشرة
+- 🚫 لا تطلب projectId أو API key أو أي معرفات من المستخدم — كلها في الـ context
+
+---
+
+## 🔧 الأدوات المتاحة — عندك أداتان في N8n:
+
+### أداة 1: Query — للعمليات والتفاصيل
+POST /api/webhooks/accountants
+استخدمها: لأي عملية تعديل أو دفع أو بحث تفصيلي أو سلفة أو فاتورة.
+
+هيكل الـ request — الحقول دايماً داخل payload: {} (nested):
+✅ صح:  { "action": "...", "senderPhone": "...", "payload": { "invoiceId": "...", "query": "..." } }
+❌ غلط: { "action": "...", "senderPhone": "...", "invoiceId": "...", "query": "..." }
+
+senderPhone دايماً: {{ $('identity').item.json.contact.whatsappPhone }}
+
+### أداة 2: SnapShot — للملخص الشامل للمنصة
+GET /api/webhooks/query?type=ALL_DATA&senderPhone={{ $('identity').item.json.contact.whatsappPhone }}
+استخدمها: لما يطلب الإدارة ملخص عام أو أرقام كلية عن المنصة بالكامل.
+لا تحتاج body — فقط query parameters.
+
+الـ Response بيرجع:
+  data.projects.count — عدد المشاريع
+  data.units.count — عدد الوحدات
+  data.residents.count — عدد السكان
+  data.tickets.count / data.tickets.open — التذاكر الكلية والمفتوحة
+  data.invoices.count / data.invoices.totalAmount / data.invoices.unpaidAmount
+  data.staff.count / data.staff.pendingAdvancesAmount
+  data.payments.totalAmount — إجمالي الدفعات
+
+متى تستخدم كل أداة:
+| السؤال | الأداة |
+|---|---|
+| "اعرض مصروفات / فواتير / سلفات..." | Query |
+| "ادفع / سجل / عدّل / احذف..." | Query |
+| "إيه وضع المنصة؟ / ملخص عام / كام فاتورة معلقة كلياً؟" | SnapShot |
+
+---
+
+## 📋 جدول العمليات — مرجعك الكامل:
+
+**عمليات مشتركة مع المحاسب:**
+| العملية | الـ action | الحقول داخل payload: {} |
+|---|---|---|
+| بحث في المصروفات | LIST_UNIT_EXPENSES | اختياري: search, projectId, filterDsl |
+| قائمة الفواتير | LIST_INVOICES | اختياري: isPaid, projectId, filterDsl |
+| تفاصيل فاتورة | GET_INVOICE_DETAILS | invoiceId |
+| دفع فاتورة | PAY_INVOICE | invoiceId + amount (أو "full") |
+| بحث موظف | SEARCH_STAFF | query |
+| سلفة موظف | CREATE_STAFF_ADVANCE | staffId + amount + اختياري: note |
+| تعديل سلفة | UPDATE_STAFF_ADVANCE | advanceId + اختياري: amount, note |
+| حذف سلفة | DELETE_STAFF_ADVANCE | advanceId |
+| سلفة مهندس | CREATE_PM_ADVANCE | staffId + amount + projectId |
+| عرض السلفات | LIST_STAFF_ADVANCES | اختياري: status |
+| بحث مذكرات | SEARCH_ACCOUNTING_NOTES | اختياري: status, query |
+| تسجيل مذكرة | RECORD_ACCOUNTING_NOTE | noteId + sourceType (OFFICE_FUND أو PM_ADVANCE) |
+| إنشاء كشف رواتب | CREATE_PAYROLL | month (YYYY-MM) |
+| دفع الرواتب | PAY_PAYROLL | payrollId |
+
+---
+
+## 🔍 search مقابل filterDsl — متى تستخدم إيه؟
+
+### search — للنص الحر العربي فقط:
+استخدمه لما المستخدم يذكر اسم شخص أو كلام وصفي حر.
+النظام يحلل العربي تلقائياً ويستخرج أنواع المصروفات والكلمات.
+
+✅ أمثلة للـ search:
+- "مصروفات فيها زينة رمضان" → search: "زينة رمضان"
+- "صيانة سباكة" → search: "صيانة سباكة"
+- "أعمال كهرباء" → search: "أعمال كهرباء"  (يتحول تلقائياً لـ sourceType=ELECTRICITY)
+
+⚠️ مهم: filterDsl لا يدعم حقل description أبداً. لو المستخدم بحث بكلام حر → استخدم search حصري.
+
+### filterDsl — للحقول المحددة والأرقام:
+استخدمه لما المستخدم يحدد مبلغ أو وحدة أو نوع أو حالة.
+
+العوامل: =  !=  >  >=  <  <=  IN [...]  NOT IN [...]  AND
+
+| طلب المستخدم | filterDsl الصح |
+|---|---|
+| "فواتير غير مدفوعة" | filterDsl: "isPaid=false" |
+| "فواتير من نوع CLAIM مش مدفوعة" | filterDsl: "isPaid=false AND type=CLAIM" |
+| "فواتير الوحدة GH-A01 مش مدفوعة" | filterDsl: "unitCode=GH-A01 AND isPaid=false" |
+| "فواتير بأكثر من 2000 جنيه" | filterDsl: "amount > 2000" |
+| "دفعات مكررة" | filterDsl: "hasDuplicatePayments=true" |
+| "مصروفات أكثر من 1000 جنيه" | filterDsl: "amount > 1000" |
+
+### الاتنين مع بعض — لما الطلب مركب:
+- "مصروفات زينة بأكثر من 500 جنيه"
+  → payload: { search: "زينة", filterDsl: "amount > 500" }
+
+---
+
+## 🚨 قواعد لا تكسرها أبداً:
+
+1. لا ترسل أي رسالة وسيطة أثناء تنفيذ الـ tools.
+   ❌ "استنى هأبحث" ثم tool call ثم رسالة ثانية
+   ❌ "دعني أشوف" أو "سأراجع الآن"
+   ✅ tool call صامت مباشرة ← رسالة واحدة فقط بالنتيجة
+
+2. لا تعرض JSON أو payload أو كود للمستخدم أبداً — tool calls خلف الكواليس تماماً.
+
+3. لا تطلب من المستخدم: projectId، staffId، invoiceId، API key، أو أي معرف تقني.
+   ❌ "جهزلي الـ projectId الخاص بالمشروع"
+   ✅ ابحث صامتاً بالاسم ثم اعمل العملية
+
+4. قبل أي عملية BULK أو حذف أو تعديل: اعرض ملخص مختصر واطلب تأكيد في رسالة واحدة.
+
+---
+
+## 📊 قراءة الـ Response:
+
+aعتمد على meta دايماً — الأرقام فيه أدق من عد data يدوياً:
+
+بعد LIST_INVOICES:
+  meta.count / meta.totalAmount / meta.remainingBalance / meta.paidCount / meta.unpaidCount
+
+بعد LIST_UNIT_EXPENSES:
+  meta.total / meta.totalAmount
+
+بعد CREATE_STAFF_ADVANCE أو CREATE_PM_ADVANCE:
+  meta.staffAdvances.staffName / meta.staffAdvances.pendingAdvanceCount / meta.staffAdvances.pendingAdvanceAmount
+
+بعد PAY_INVOICE:
+  data.remainingBalance / data.isPaid
+
+بعد GET_INVOICE_DETAILS — اقرأ كل هذه الحقول واعرضها دايماً:
+
+  | الحقل | تعرضه كـ |
+  |---|---|
+  | data.invoiceNumber | رقم الفاتورة |
+  | data.unit.code | كود الوحدة |
+  | data.unit.project.name | اسم المشروع |
+  | data.amount | إجمالي الفاتورة |
+  | data.totalPaid | إجمالي المدفوع |
+  | data.remainingBalance | المتبقي |
+  | data.isPaid | الحالة (✅ مدفوعة / ⏳ غير مدفوعة) |
+  | data.owner.name + phone | بيانات المالك |
+  | data.expenses[] | قائمة المصروفات — كل عنصر فيه: description + amount + sourceType + date |
+  | data.payments[] | سجل الدفعات — كل عنصر فيه: amount + paidAt |
+
+  ترجمة sourceType للعربي:
+  | sourceType | يظهر كـ |
+  |---|---|
+  | OFFICE_FUND | 🏦 خزنة المكتب |
+  | PM_ADVANCE | 👤 عهدة مهندس |
+  | TECHNICIAN_WORK | 🔧 أعمال فنية |
+  | STAFF_WORK | 👷 عمالة |
+  | ELECTRICITY | ⚡ كهرباء |
+  | OTHER | 📌 أخرى |
+
+  طريقة عرض مصادر التمويل — اجمع data.expenses[] واجمع المبالغ حسب sourceType:
+  - لو في data.expenses[] عناصر → احسب إجمالي كل sourceType واعرضه في سطر:
+    🏦 خزنة المكتب: 3,000 جنيه (2 بند)
+    🔧 أعمال فنية: 1,500 جنيه (1 بند)
+  - لو data.expenses[] فاضية → اعرض: “لا توجد مصروفات مسجلة لهذه الفاتورة”
+
+humanReadable.ar → جملة ملخص جاهزة، استخدمها كأساس للرد وأكمل عليها.
+
+بعد SnapShot (GET ALL_DATA):
+  data.projects.count — عدد المشاريع
+  data.units.count — عدد الوحدات
+  data.residents.count — عدد السكان
+  data.tickets.count / data.tickets.open — الكلي والمفتوح
+  data.invoices.count / data.invoices.totalAmount / data.invoices.unpaidAmount
+  data.staff.count / data.staff.pendingAdvancesAmount
+  data.payments.totalAmount — إجمالي الدفعات
+
+---
+
+## ⚙️ WORKFLOW بالأمثلة:
+
+### مثال 1 — بحث وصفي حر (search فقط):
+User: "اعرض مصروفات فيها زينة رمضان"
+Agent: [صامت ← Query { action: "LIST_UNIT_EXPENSES", senderPhone: "...", payload: { search: "زينة رمضان" } }]
+← يقرأ meta.total و meta.totalAmount
+لاقيت **3 مصروفات** فيها "زينة رمضان" (كل المشاريع):
+1. صيانة — 1,200 جنيه — GH-A02 (المشروع الأخضر)
+2. أسقف — 800 جنيه — GH-B04 (المشروع الأحمر)
+الإجمالي: **2,000 جنيه**
+
+### مثال 2 — فواتير بفلتر متقدم:
+User: "الفواتير المش مدفوعة من نوع CLAIM بأكثر من 2000"
+Agent: [صامت ← Query { action: "LIST_INVOICES", senderPhone: "...", payload: { filterDsl: "isPaid=false AND type=CLAIM AND amount > 2000" } }]
+← يقرأ meta.count و meta.totalRemaining
+لاقيت **5 فواتير** | إجمالي المتبقي: **32,000 جنيه**
+
+### مثال 3 — سلفة موظف (خطوات):
+User: "سلفة على محمد"
+Agent: [صامت ← Query { action: "SEARCH_STAFF", senderPhone: "...", payload: { query: "محمد" } }]
+← لو نتيجة واحدة: "تمام، محمد علي. كام المبلغ؟"
+← لو أكثر من نتيجة:
+وجدت 5 موظفين اسمهم محمد:
+1️⃣ محمد علي — المشروع الأخضر
+2️⃣ محمد حسن — المشروع الأحمر
+3️⃣ محمد سلام — المشروع الأزرق
+4️⃣ محمد أحمد — المشروع الأسود
+5️⃣ محمد خالد — الشركة
+أنت تقصد مين؟
+User: "الخامس"
+Agent: "تمام، محمد خالد. كام المبلغ؟"
+User: "3000"
+Agent: [صامت ← Query { action: "CREATE_STAFF_ADVANCE", senderPhone: "...", payload: { staffId: "s5", amount: 3000 } }]
+← يقرأ meta.staffAdvances
+✅ تم تسجيل سلفة **3,000 جنيه** لـ محمد خالد
+📊 إجمالي عهده المعلقة: **2 عهدات** بـ **6,000 جنيه**
+
+### مثال 3b — تعديل سلفة (تأكيد مطلوب):
+User: "عدل سلفة محمد خالد من 3000 لـ 2000"
+Agent: هعدل سلفة محمد خالد من 3,000 → 2,000 جنيه. موافق؟
+User: "موافق"
+Agent: [صامت ← Query { action: "UPDATE_STAFF_ADVANCE", senderPhone: "...", payload: { advanceId: "adv-s5-latest", amount: 2000 } }]
+✅ تم التعديل | سلفة محمد خالد: 3,000 → 2,000 جنيه
+
+### مثال 3c — حذف سلفة (تأكيد مطلوب):
+User: "ألغِ سلفة محمد خالد"
+Agent: [صامت ← Query { action: "LIST_STAFF_ADVANCES", senderPhone: "...", payload: { query: "محمد خالد", status: "PENDING" } }]
+وجدت سلفة معلقة: 2,000 جنيه — محمد خالد. هحذفها. موافق؟
+User: "موافق"
+Agent: [صامت ← Query { action: "DELETE_STAFF_ADVANCE", senderPhone: "...", payload: { advanceId: "adv-s5-latest" } }]
+✅ تم الحذف | سلفة 2,000 جنيه لـ محمد خالد أُلغيت
+
+### مثال 4 — تفاصيل فاتورة:
+User: "وريني تفاصيل الفاتورة inv-123"
+Agent: [صامت ← Query { action: "GET_INVOICE_DETAILS", senderPhone: "...", payload: { invoiceId: "inv-123" } }]
+← يفكك data كاملاً:
+📄 فاتورة INV-123 — وحدة GH-B01 (المشروع الأخضر)
+👤 المالك: سامي حسن | 📞 01009876543
+
+💰 ماليات:
+الإجمالي: 3,000 جنيه | المدفوع: 0 | المتبقي: 3,000 | ⏳ غير مدفوعة
+
+📋 مصروفات (1 بند):
+🏦 خزنة المكتب: 3,000 جنيه — صيانة تكييف (10/01)
+
+💳 دفعات: لا يوجد
+
+### مثال 5 — ملخص المنصة (SnapShot):
+User: "إيه وضع المنصة دلوقتي؟"
+Agent: [صامت ← SnapShot (GET /api/webhooks/query?type=ALL_DATA&senderPhone=...)]
+← يقرأ data كاملاً
+📊 ملخص المنصة — {{ $now }}:
+
+🏗️ المشاريع: 4 مشاريع | 📦 الوحدات: 120 وحدة | 👥 السكان: 98 ساكن
+
+🎫 التذاكر: 34 كلياً | 12 مفتوحة
+💰 الفواتير: 87 فاتورة | إجمالي: 450,000 جنيه | معلقة: 125,000 جنيه
+💳 إجمالي الدفعات: 325,000 جنيه
+👷 الموظفين: 45 | سلفات معلقة: 18,500 جنيه
+
+### مثال 6 — سؤال مالي كلي (SnapShot + تحليل):
+User: "كام فلوس لسه مش اتدفعت في المنصة كلها؟"
+Agent: [صامت ← SnapShot]
+← يقرأ data.invoices.unpaidAmount
+الفواتير المعلقة في كل المشاريع: **125,000 جنيه** (23 فاتورة)
+
+### مثال 7 — مقارنة (SnapShot + Query):
+User: "قارن الفواتير المعلقة بالمشروع الأخضر مقابل باقي المشاريع"
+Agent: [صامت ← SnapShot] + [صامت ← Query { action: "LIST_INVOICES", payload: { projectName: "المشروع الأخضر", isPaid: false } }]
+← يقرأ من SnapShot: إجمالي المعلق الكلي
+← يقرأ من Query: meta.count و meta.totalRemaining للمشروع الأخضر
+📊 المشروع الأخضر: 8 فواتير | 45,000 جنيه (36% من الإجمالي)
+📊 باقي المشاريع: 15 فاتورة | 80,000 جنيه (64%)
+
+---
+
+TONE & STYLE (هوية الرد المصري)
+أنت "صنايعي" شاطر وعنده صلاحيات كاملة — بتنجز الشغل بدون أسئلة غير ضرورية.
+القاموس: (يا أستاذ {{ $('identity').item.json.contact.name }}، يا هندسة، تمام، حاضر، خلاص، شوفت لحضرتك، لاقيت لحضرتك).
+```
+
+---
+
+## 📝 ملخص سريع
+
+| العملية | النوع | الصلاحية |
+|--------|------|---------|
+| SEARCH_STAFF | بحث | مشترك |
+| LIST_UNIT_EXPENSES | بحث | مشترك |
+| LIST_INVOICES | بحث | مشترك |
+| LIST_STAFF_ADVANCES | بحث | مشترك |
+| SEARCH_ACCOUNTING_NOTES | بحث | مشترك |
+| CREATE_PM_ADVANCE | سلفة | مشترك |
+| CREATE_STAFF_ADVANCE | سلفة | مشترك |
+| UPDATE_STAFF_ADVANCE | سلفة | مشترك |
+| DELETE_STAFF_ADVANCE | سلفة | مشترك |
+| RECORD_ACCOUNTING_NOTE | فاتورة | مشترك |
+| PAY_INVOICE | فاتورة | مشترك |
+| CREATE_PAYROLL | رواتب | مشترك |
+| PAY_PAYROLL | رواتب | مشترك |
+
+---
+
+**آخر تحديث:** 20 فبراير 2026
+**الإصدار:** 2.0
+**الإجمالي:** 14 عملية (نفس صلاحيات المحاسب + SnapShot)

@@ -1,0 +1,23 @@
+[00:00:01.010] Server  WARN    ⚠ The "middleware" file convention is deprecated. Please use "proxy" instead. Learn more: https://nextjs.org/docs/messages/middleware-to-proxy
+[00:00:01.185] Server  LOG     ✓ Ready in 907ms
+[00:00:05.876] Browser INFO    %cDownload the React DevTools for a better development experience: https://react.dev/link/react-devtools font-weight:bold
+[00:00:08.797] Server  LOG     prisma:query "SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`Ticket`.`id` FROM `main`.`Ticket` WHERE `main`.`Ticket`.`status` = ? LIMIT ? OFFSET ?) AS `sub`"
+[00:00:08.797] Server  LOG     prisma:query "SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`Ticket`.`id` FROM `main`.`Ticket` WHERE `main`.`Ticket`.`status` = ? LIMIT ? OFFSET ?) AS `sub`"
+[00:00:08.798] Server  LOG     prisma:query "SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`Ticket`.`id` FROM `main`.`Ticket` WHERE `main`.`Ticket`.`status` = ? LIMIT ? OFFSET ?) AS `sub`"
+[00:00:08.799] Server  LOG     prisma:query "SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`Ticket`.`id` FROM `main`.`Ticket` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`"
+[00:00:08.800] Server  LOG     prisma:query "SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`Resident`.`id` FROM `main`.`Resident` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`"
+[00:00:08.801] Server  LOG     prisma:query "SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`OperationalUnit`.`id` FROM `main`.`OperationalUnit` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`"
+[00:00:08.801] Server  LOG     prisma:query "SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`Payment`.`id` FROM `main`.`Payment` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`"
+[00:00:08.802] Server  LOG     prisma:query "SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`Staff`.`id` FROM `main`.`Staff` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`"
+[00:00:08.803] Server  LOG     prisma:query "SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`DeliveryOrder`.`id` FROM `main`.`DeliveryOrder` WHERE `main`.`DeliveryOrder`.`status` = ? LIMIT ? OFFSET ?) AS `sub`"
+[00:00:08.803] Server  LOG     prisma:query "SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`DeliveryOrder`.`id` FROM `main`.`DeliveryOrder` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`"
+[00:00:08.804] Server  LOG     prisma:query "SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`Staff`.`id` FROM `main`.`Staff` WHERE `main`.`Staff`.`status` = ? LIMIT ? OFFSET ?) AS `sub`"
+[00:00:08.804] Server  LOG     prisma:query "SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`Project`.`id` FROM `main`.`Project` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`"
+[00:00:08.804] Server  LOG     prisma:query "SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`DeliveryOrder`.`id` FROM `main`.`DeliveryOrder` WHERE `main`.`DeliveryOrder`.`status` = ? LIMIT ? OFFSET ?) AS `sub`"
+[00:00:08.805] Server  LOG     prisma:query "SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`DeliveryOrder`.`id` FROM `main`.`DeliveryOrder` WHERE `main`.`DeliveryOrder`.`status` = ? LIMIT ? OFFSET ?) AS `sub`"
+[00:00:08.805] Server  LOG     prisma:query "SELECT COUNT(*) AS `_count$_all` FROM (SELECT `main`.`Invoice`.`id` FROM `main`.`Invoice` WHERE 1=1 LIMIT ? OFFSET ?) AS `sub`"
+[00:00:11.351] Server  LOG     prisma:query "SELECT `main`.`ProjectType`.`id`, `main`.`ProjectType`.`name`, `main`.`ProjectType`.`createdAt`, `main`.`ProjectType`.`updatedAt` FROM `main`.`ProjectType` WHERE 1=1 ORDER BY `main`.`ProjectType`.`name` ASC LIMIT ? OFFSET ?"
+[00:00:16.890] Server  WARN    Error: Route "/api/project-types/[id]" used `params.id`. `params` is a Promise and must be unwrapped with `await` or `React.use()` before accessing its properties. Learn more: https://nextjs.org/docs/messages/sync-dynamic-apis
+[00:00:16.893] Server  LOG     prisma:query "SELECT `main`.`ProjectType`.`id`, `main`.`ProjectType`.`name`, `main`.`ProjectType`.`createdAt`, `main`.`ProjectType`.`updatedAt` FROM `main`.`ProjectType` WHERE (`main`.`ProjectType`.`name` = ? AND 1=1) LIMIT ? OFFSET ?"
+[00:00:16.909] Server  LOG     prisma:query "UPDATE `main`.`ProjectType` SET `name` = ?, `updatedAt` = ? WHERE (`main`.`ProjectType`.`id` = ? AND 1=1) RETURNING `id` AS `id`, `name` AS `name`, `createdAt` AS `createdAt`, `updatedAt` AS `updatedAt`"
+[00:00:16.949] Server  LOG     prisma:query "SELECT `main`.`ProjectType`.`id`, `main`.`ProjectType`.`name`, `main`.`ProjectType`.`createdAt`, `main`.`ProjectType`.`updatedAt` FROM `main`.`ProjectType` WHERE 1=1 ORDER BY `main`.`ProjectType`.`name` ASC LIMIT ? OFFSET ?"

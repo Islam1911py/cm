@@ -1,0 +1,3 @@
+{
+  "/api/operational-units/[id]/owner/route": "app/api/operational-units/[id]/owner/route.js"
+}

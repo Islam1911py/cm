@@ -1,0 +1,17 @@
+{
+  "headers": {
+    "x-nextjs-stale-time": "300",
+    "x-nextjs-prerender": "1",
+    "x-next-cache-tags": "_N_T_/layout,_N_T_/dashboard/layout,_N_T_/dashboard/accountant/layout,_N_T_/dashboard/accountant/accounting-notes/layout,_N_T_/dashboard/accountant/accounting-notes/page,_N_T_/dashboard/accountant/accounting-notes"
+  },
+  "segmentPaths": [
+    "/_tree",
+    "/_full",
+    "/dashboard/accountant/accounting-notes/__PAGE__",
+    "/dashboard/accountant/accounting-notes",
+    "/dashboard/accountant",
+    "/dashboard",
+    "/_index",
+    "/_head"
+  ]
+}

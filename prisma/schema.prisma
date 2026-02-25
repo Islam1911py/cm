@@ -1,0 +1,613 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model N8nApiKey {
+  id           String          @id @default(cuid())
+  name         String
+  key          String          @unique
+  role         N8nApiKeyRole
+  projectId    String?
+  rateLimit    Int             @default(100)
+  requestCount Int             @default(0)
+  lastResetAt  DateTime        @default(now())
+  isActive     Boolean         @default(true)
+  description  String?
+  createdAt    DateTime        @default(now())
+  updatedAt    DateTime        @updatedAt
+  project      N8nWebhookLog[]
+}
+
+model N8nWebhookLog {
+  id           String           @id @default(cuid())
+  apiKeyId     String
+  eventType    WebhookEventType
+  endpoint     String
+  method       String
+  statusCode   Int
+  requestBody  String?
+  responseBody String?
+  ipAddress    String?
+  errorMessage String?
+  createdAt    DateTime         @default(now())
+  apiKey       N8nApiKey        @relation(fields: [apiKeyId], references: [id])
+}
+
+model User {
+  id                  String               @id @default(cuid())
+  email               String               @unique
+  name                String
+  password            String
+  whatsappPhone       String?              @unique
+  role                UserRole             @default(PROJECT_MANAGER)
+  canViewAllProjects  Boolean              @default(false)
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  accountingNotes     AccountingNote[]     @relation("AccountingNoteCreatedBy")
+  assignedDeliveries  DeliveryOrder[]      @relation("DeliveryAssignedTo")
+  deliveredOrders     DeliveryOrder[]      @relation("DeliveryDeliveredBy")
+  operationalExpenses OperationalExpense[] @relation("OperationalExpensesRecordedBy")
+  createdPayrolls     Payroll[]            @relation("PayrollCreatedBy")
+  assignedProjects    ProjectAssignment[]
+  assignedTickets     Ticket[]             @relation("TicketAssignedTo")
+  unitExpenses        UnitExpense[]        @relation("ExpenseRecordedBy")
+}
+
+model Project {
+  id                   String                   @id @default(cuid())
+  name                 String                   @unique
+  typeId               String
+  monthlyBillingDay    Int?                     @default(1)
+  isActive             Boolean                  @default(true)
+  createdAt            DateTime                 @default(now())
+  updatedAt            DateTime                 @updatedAt
+  accountingNotes      AccountingNote[]
+  operationalUnits     OperationalUnit[]
+  pmAdvances           PMAdvance[]
+  projectType          ProjectType              @relation(fields: [typeId], references: [id])
+  projectAssignments   ProjectAssignment[]
+  projectElements      ProjectElement[]
+  staffAssignments     StaffProjectAssignment[]
+}
+
+model ProjectAssignment {
+  id        String  @id @default(cuid())
+  userId    String
+  projectId String
+  user      User    @relation(fields: [userId], references: [id])
+  project   Project @relation(fields: [projectId], references: [id])
+
+  @@unique([userId, projectId])
+}
+
+model ProjectElement {
+  id        String      @id @default(cuid())
+  name      String
+  projectId String
+  typeId    String
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  type      ProjectType @relation(fields: [typeId], references: [id])
+  project   Project     @relation(fields: [projectId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, name])
+}
+
+model ProjectType {
+  id        String           @id @default(cuid())
+  name      String           @unique
+  createdAt DateTime         @default(now())
+  updatedAt DateTime         @updatedAt
+  projects  Project[]
+  elements  ProjectElement[]
+}
+
+model OperationalUnit {
+  id                   String               @id @default(cuid())
+  name                 String
+  code                 String
+  type                 String
+  projectId            String
+  monthlyManagementFee Float?               @default(0)
+  monthlyBillingDay    Int?                 @default(1)
+  isActive             Boolean              @default(true)
+  accountingNotes      AccountingNote[]
+  deliveryOrders      DeliveryOrder[]
+  invoices            Invoice[]
+  operationalExpenses OperationalExpense[] @relation("OperationalUnitExpenses")
+  project             Project              @relation(fields: [projectId], references: [id])
+  ownerAssociation    OwnerAssociation?
+  residents           Resident[]
+  staff               Staff[]
+  staffUnitAssignments StaffUnitAssignment[]
+  staffWorkLogs       StaffWorkLog[]
+  technicianWorks     TechnicianWork[]
+  tickets             Ticket[]
+  expenses            UnitExpense[]
+
+  @@unique([projectId, code])
+}
+
+model OwnerAssociation {
+  id       String          @id @default(cuid())
+  name     String
+  phone    String?
+  email    String?
+  unitId   String          @unique
+  invoices Invoice[]
+  unit     OperationalUnit @relation(fields: [unitId], references: [id])
+  contacts OwnerAssociationContact[]
+}
+
+model OwnerAssociationContact {
+  id                 String            @id @default(cuid())
+  ownerAssociationId String
+  type               OwnerContactType
+  label              String?
+  value              String
+  isPrimary          Boolean          @default(false)
+  createdAt          DateTime         @default(now())
+  updatedAt          DateTime         @updatedAt
+  ownerAssociation   OwnerAssociation @relation(fields: [ownerAssociationId], references: [id], onDelete: Cascade)
+
+  @@index([ownerAssociationId])
+}
+
+enum OwnerContactType {
+  PHONE
+  EMAIL
+}
+
+model AccountingNote {
+  id                   String               @id @default(cuid())
+  projectId            String
+  unitId               String
+  createdByUserId      String
+  description          String
+  amount               Float
+  sourceType           OperationalExpenseSource @default(OFFICE_FUND)
+  pmAdvanceId          String?
+  status               AccountingNoteStatus @default(PENDING)
+  convertedToExpenseId String?              @unique
+  convertedAt          DateTime?
+  createdAt            DateTime             @default(now())
+  updatedAt            DateTime             @updatedAt
+  project              Project              @relation(fields: [projectId], references: [id])
+  unit                 OperationalUnit      @relation(fields: [unitId], references: [id])
+  createdByUser        User                 @relation("AccountingNoteCreatedBy", fields: [createdByUserId], references: [id])
+  convertedToExpense   OperationalExpense?  @relation("FromAccountingNote")
+  pmAdvance            PMAdvance?           @relation("PMAdvanceAccountingNotes", fields: [pmAdvanceId], references: [id])
+}
+
+model UnitExpense {
+  id               String            @id @default(cuid())
+  unitId           String
+  pmAdvanceId      String?
+  date             DateTime          @default(now())
+  description      String
+  amount           Float
+  sourceType       ExpenseSourceType
+  recordedByUserId String
+  technicianWorkId String?           @unique
+  staffWorkLogId   String?           @unique
+  isClaimed        Boolean           @default(false)
+  claimInvoiceId   String?
+  claimedAt        DateTime?
+  createdAt        DateTime          @default(now())
+  updatedAt        DateTime          @updatedAt
+  unit             OperationalUnit   @relation(fields: [unitId], references: [id])
+  recordedByUser   User              @relation("ExpenseRecordedBy", fields: [recordedByUserId], references: [id])
+  technicianWork   TechnicianWork?   @relation(fields: [technicianWorkId], references: [id])
+  staffWorkLog     StaffWorkLog?     @relation(fields: [staffWorkLogId], references: [id])
+  claimInvoice     Invoice?          @relation("ClaimInvoiceExpenses", fields: [claimInvoiceId], references: [id])
+  pmAdvance        PMAdvance?        @relation("PMAdvanceExpenses", fields: [pmAdvanceId], references: [id])
+}
+
+model OperationalExpense {
+  id                  String                   @id @default(cuid())
+  unitId              String
+  description         String
+  amount              Float
+  sourceType          OperationalExpenseSource
+  pmAdvanceId         String?
+  claimInvoiceId      String?
+  convertedFromNoteId String?                  @unique
+  recordedByUserId    String
+  recordedAt          DateTime                 @default(now())
+  createdAt           DateTime                 @default(now())
+  updatedAt           DateTime                 @updatedAt
+  unit                OperationalUnit          @relation("OperationalUnitExpenses", fields: [unitId], references: [id])
+  pmAdvance           PMAdvance?               @relation("PMAdvanceOperationalExpenses", fields: [pmAdvanceId], references: [id])
+  claimInvoice        Invoice?                 @relation("OperationalExpensesClaim", fields: [claimInvoiceId], references: [id])
+  recordedByUser      User                     @relation("OperationalExpensesRecordedBy", fields: [recordedByUserId], references: [id])
+  accountingNote      AccountingNote?          @relation("FromAccountingNote", fields: [convertedFromNoteId], references: [convertedToExpenseId])
+}
+
+model PMAdvance {
+  id                  String               @id @default(cuid())
+  staffId             String
+  projectId           String?
+  amount              Float
+  remainingAmount     Float
+  givenAt             DateTime             @default(now())
+  notes               String?
+  createdAt           DateTime             @default(now())
+  updatedAt           DateTime             @updatedAt
+  operationalExpenses OperationalExpense[] @relation("PMAdvanceOperationalExpenses")
+  staff               Staff                @relation(fields: [staffId], references: [id])
+  project             Project?             @relation(fields: [projectId], references: [id])
+  expenses            UnitExpense[]        @relation("PMAdvanceExpenses")
+  accountingNotes     AccountingNote[]     @relation("PMAdvanceAccountingNotes")
+}
+
+model Resident {
+  id             String          @id @default(cuid())
+  name           String
+  email          String?
+  phone          String?
+  whatsappPhone  String?         @unique
+  address        String?
+  status         ResidentStatus  @default(ACTIVE)
+  unitId         String
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+  deliveryOrders DeliveryOrder[]
+  unit           OperationalUnit @relation(fields: [unitId], references: [id])
+  tickets        Ticket[]
+}
+
+model Ticket {
+  id               String          @id @default(cuid())
+  title            String
+  description      String
+  status           TicketStatus    @default(NEW)
+  priority         String          @default("Normal")
+  category         String?
+  source           String?         @default("SYSTEM")
+  contactName      String?
+  contactPhone     String?
+  isResidentKnown  Boolean         @default(true)
+  residentResponse String?
+  resolution       String?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+  closedAt         DateTime?
+  residentId       String?
+  unitId           String
+  assignedToId     String?
+  resident         Resident?       @relation(fields: [residentId], references: [id])
+  unit             OperationalUnit @relation(fields: [unitId], references: [id])
+  assignedTo       User?           @relation("TicketAssignedTo", fields: [assignedToId], references: [id])
+}
+
+model DeliveryOrder {
+  id              String          @id @default(cuid())
+  title           String
+  description     String
+  status          DeliveryStatus  @default(NEW)
+  priority        String          @default("Normal")
+  notes           String?
+  createdAt       DateTime        @default(now())
+  updatedAt       DateTime        @updatedAt
+  deliveredAt     DateTime?
+  residentId      String
+  unitId          String
+  assignedToId    String?
+  deliveredById   String?
+  resident        Resident        @relation(fields: [residentId], references: [id])
+  unit            OperationalUnit @relation(fields: [unitId], references: [id])
+  assignedTo      User?           @relation("DeliveryAssignedTo", fields: [assignedToId], references: [id])
+  deliveredByUser User?           @relation("DeliveryDeliveredBy", fields: [deliveredById], references: [id])
+}
+
+model Invoice {
+  id                  String               @id @default(cuid())
+  invoiceNumber       String
+  type                InvoiceType
+  amount              Float
+  ownerAssociationId  String
+  unitId              String
+  issuedAt            DateTime             @default(now())
+  totalPaid           Float                @default(0)
+  remainingBalance    Float                @default(0)
+  isPaid              Boolean              @default(false)
+  dueDate             DateTime?
+  ownerAssociation    OwnerAssociation     @relation(fields: [ownerAssociationId], references: [id])
+  unit                OperationalUnit      @relation(fields: [unitId], references: [id])
+  operationalExpenses OperationalExpense[] @relation("OperationalExpensesClaim")
+  payments            Payment[]
+  expenses            UnitExpense[]        @relation("ClaimInvoiceExpenses")
+
+  @@unique([unitId, invoiceNumber])
+}
+
+model Payment {
+  id        String  @id @default(cuid())
+  amount    Float
+  invoiceId String
+  createdAt DateTime @default(now())
+  invoice   Invoice @relation(fields: [invoiceId], references: [id])
+}
+
+model TechnicianSpecialty {
+  id          String       @id @default(cuid())
+  name        String       @unique
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+  technicians Technician[]
+}
+
+model Technician {
+  id            String               @id @default(cuid())
+  name          String
+  phone         String
+  address       String?
+  specialtyId   String
+  salaryType    TechnicianSalaryType @default(PER_JOB)
+  monthlySalary Float?
+  dailySalary   Float?
+  jobRate       Float?
+  currency      String               @default("EGP")
+  notes         String?
+  createdAt     DateTime             @default(now())
+  updatedAt     DateTime             @updatedAt
+  specialty     TechnicianSpecialty  @relation(fields: [specialtyId], references: [id])
+  payments      TechnicianPayment[]
+  works         TechnicianWork[]
+}
+
+model TechnicianWork {
+  id           String          @id @default(cuid())
+  technicianId String
+  unitId       String
+  description  String?
+  amount       Float?
+  status       WorkStatus      @default(PENDING)
+  isPaid       Boolean         @default(false)
+  createdAt    DateTime        @default(now())
+  startedAt    DateTime?
+  completedAt  DateTime?
+  paidAt       DateTime?
+  technician   Technician      @relation(fields: [technicianId], references: [id])
+  unit         OperationalUnit @relation(fields: [unitId], references: [id])
+  expense      UnitExpense?
+}
+
+model TechnicianPayment {
+  id           String     @id @default(cuid())
+  technicianId String
+  amount       Float
+  notes        String?
+  paidAt       DateTime   @default(now())
+  technician   Technician @relation(fields: [technicianId], references: [id])
+}
+
+model Staff {
+  id                 String                   @id @default(cuid())
+  name               String
+  type               StaffType
+  role               StaffRole
+  phone              String?
+  salary             Float?
+  currency           String                   @default("EGP")
+  status             StaffStatus              @default(ACTIVE)
+  paymentDay         Int?
+  unitId             String
+  isProjectManager   Boolean                  @default(false)
+  createdAt          DateTime                 @default(now())
+  updatedAt          DateTime                 @updatedAt
+  pmAdvances         PMAdvance[]
+  unit               OperationalUnit          @relation(fields: [unitId], references: [id])
+  advances           StaffAdvance[]
+  projectAssignments StaffProjectAssignment[]
+  unitAssignments    StaffUnitAssignment[]
+  workLogs           StaffWorkLog[]
+}
+
+model StaffProjectAssignment {
+  id         String   @id @default(cuid())
+  staffId    String
+  projectId  String
+  assignedAt DateTime @default(now())
+  notes      String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  staff      Staff    @relation(fields: [staffId], references: [id], onDelete: Cascade)
+
+  @@unique([staffId, projectId])
+}
+
+model StaffUnitAssignment {
+  id         String           @id @default(cuid())
+  staffId    String
+  unitId     String
+  assignedAt DateTime         @default(now())
+  notes      String?
+  createdAt  DateTime         @default(now())
+  updatedAt  DateTime         @updatedAt
+  staff      Staff            @relation(fields: [staffId], references: [id], onDelete: Cascade)
+  unit       OperationalUnit  @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@unique([staffId, unitId])
+}
+
+model StaffAdvance {
+  id                    String        @id @default(cuid())
+  staffId               String
+  amount                Float
+  date                  DateTime      @default(now())
+  status                AdvanceStatus @default(PENDING)
+  note                  String?
+  deductedFromPayrollId String?
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+  staff                 Staff         @relation(fields: [staffId], references: [id])
+  payroll               Payroll?      @relation("DeductedFromPayroll", fields: [deductedFromPayrollId], references: [id])
+}
+
+model Payroll {
+  id               String         @id @default(cuid())
+  month            String
+  totalGross       Float
+  totalAdvances    Float          @default(0)
+  totalNet         Float
+  status           PayrollStatus  @default(PENDING)
+  paidAt           DateTime?
+  createdByUserId  String
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+  createdByUser    User           @relation("PayrollCreatedBy", fields: [createdByUserId], references: [id])
+  payrollItems     PayrollItem[]
+  deductedAdvances StaffAdvance[] @relation("DeductedFromPayroll")
+}
+
+model PayrollItem {
+  id        String   @id @default(cuid())
+  payrollId String
+  staffId   String
+  name      String
+  salary    Float
+  advances  Float    @default(0)
+  net       Float
+  createdAt DateTime @default(now())
+  payroll   Payroll  @relation(fields: [payrollId], references: [id], onDelete: Cascade)
+}
+
+model StaffWorkLog {
+  id          String          @id @default(cuid())
+  staffId     String
+  unitId      String
+  description String
+  amount      Float
+  workDate    DateTime
+  isPaid      Boolean         @default(false)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+  staff       Staff           @relation(fields: [staffId], references: [id])
+  unit        OperationalUnit @relation(fields: [unitId], references: [id])
+  expense     UnitExpense?
+}
+
+enum AdvanceStatus {
+  PENDING
+  DEDUCTED
+}
+
+enum PayrollStatus {
+  PENDING
+  PAID
+}
+
+enum UserRole {
+  ADMIN
+  ACCOUNTANT
+  PROJECT_MANAGER
+}
+
+enum N8nApiKeyRole {
+  RESIDENT
+  ACCOUNTANT
+  ADMIN
+  PROJECT_MANAGER
+}
+
+enum WebhookEventType {
+  TICKET_CREATED
+  TICKET_UPDATED
+  TICKET_RESOLVED
+  ACCOUNTING_NOTE_CREATED
+  QUERY_EXECUTED
+  DELIVERY_ORDER_CREATED
+  PM_OPERATIONAL_EXPENSE_CREATED
+  PM_RESIDENT_LOOKUP
+  PM_TICKETS_SUMMARY
+  PM_PROJECT_UNITS_LISTED
+  PM_UNIT_EXPENSES_LISTED
+  PM_ELECTRICITY_TOPUP_LOOKUP
+  PM_NEW_TICKET
+  PM_NEW_DELIVERY_ORDER
+}
+
+enum ExpenseSourceType {
+  TECHNICIAN_WORK
+  STAFF_WORK
+  ELECTRICITY
+  OTHER
+}
+
+enum AccountingNoteStatus {
+  PENDING
+  CONVERTED
+  REJECTED
+}
+
+enum OperationalExpenseSource {
+  OFFICE_FUND
+  PM_ADVANCE
+}
+
+enum ResidentStatus {
+  ACTIVE
+  INACTIVE
+  MOVED_OUT
+}
+
+enum TicketStatus {
+  NEW
+  IN_PROGRESS
+  DONE
+}
+
+enum DeliveryStatus {
+  NEW
+  IN_PROGRESS
+  DELIVERED
+}
+
+enum InvoiceType {
+  MANAGEMENT_SERVICE
+  CLAIM
+}
+
+enum StaffType {
+  OFFICE_STAFF
+  FIELD_WORKER
+}
+
+enum StaffRole {
+  SECURITY
+  CLEANER
+  TECHNICIAN
+  MANAGER
+  ACCOUNTANT
+  PLUMBER
+  CARPENTER
+  ELECTRICIAN
+  PAINTER
+  GENERAL_WORKER
+}
+
+enum StaffStatus {
+  ACTIVE
+  INACTIVE
+  ON_LEAVE
+  TERMINATED
+}
+
+enum TechnicianSalaryType {
+  MONTHLY
+  DAILY
+  PER_JOB
+}
+
+enum WorkStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}

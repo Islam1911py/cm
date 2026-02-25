@@ -1,0 +1,3 @@
+{
+  "/api/accounting-notes/[id]/convert-to-expense/route": "app/api/accounting-notes/[id]/convert-to-expense/route.js"
+}
