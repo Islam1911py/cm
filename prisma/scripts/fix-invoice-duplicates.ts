@@ -26,34 +26,27 @@ async function main() {
     return
   }
 
-  console.log(`تم العثور على ${dupes.length} زوج (projectId, invoiceNumber) مكرر. جاري الإصلاح...`)
+  console.log(`تم العثور على ${dupes.length} زوج (projectId, invoiceNumber) مكرر. جاري حذف الزيادة...`)
 
-  let fixed = 0
+  let deleted = 0
   for (const d of dupes) {
-    // جلب كل الفواتير بهذا الزوج مرتبة بـ id (نحتفظ بالأول ونعدّل الباقي)
     const invoices = await db.invoice.findMany({
       where: {
         projectId: d.projectId,
         invoiceNumber: d.invoiceNumber
       },
       orderBy: { id: "asc" },
-      select: { id: true, invoiceNumber: true }
+      select: { id: true }
     })
 
-    // الأول نتركه كما هو، من الثاني فصاعداً نغيّر invoiceNumber ليكون فريداً
+    // أول صف نمسكه، الباقي نحذفه
     for (let i = 1; i < invoices.length; i++) {
-      const inv = invoices[i]
-      const newNumber = `${inv.invoiceNumber}-${inv.id.slice(-6)}`
-      await db.invoice.update({
-        where: { id: inv.id },
-        data: { invoiceNumber: newNumber }
-      })
-      console.log(`  تم تحديث الفاتورة ${inv.id}: ${inv.invoiceNumber} → ${newNumber}`)
-      fixed++
+      await db.invoice.delete({ where: { id: invoices[i].id } })
+      deleted++
     }
   }
 
-  console.log(`تم إصلاح ${fixed} فاتورة. يمكنك الآن تشغيل: npx prisma migrate deploy (أو migrate dev).`)
+  console.log(`تم حذف ${deleted} فاتورة مكررة. يمكنك الآن تشغيل prisma db push أو migrate.`)
 }
 
 main()

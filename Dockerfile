@@ -33,9 +33,9 @@ COPY --from=builder /app/public ./public
 COPY --from=builder --chown=nextjs:nodejs /app/.next/standalone ./
 COPY --from=builder --chown=nextjs:nodejs /app/.next/static ./.next/static
 
-# --- أهم جزء: نسخ ملفات Prisma عشان الأمر يشتغل ---
-COPY --from=builder /app/prisma ./prisma
-COPY --from=builder /app/node_modules ./node_modules
+# --- Prisma + سكربت إصلاح التكرارات (يُشغّل في CMD قبل db push) ---
+COPY --from=builder --chown=nextjs:nodejs /app/prisma ./prisma
+COPY --from=builder --chown=nextjs:nodejs /app/node_modules ./node_modules
 # -----------------------------------------------
 
 USER nextjs
@@ -43,5 +43,5 @@ EXPOSE 3000
 ENV PORT=3000
 ENV HOSTNAME="0.0.0.0"
 
-# تشغيل الربط بالداتابيز ثم تشغيل الموقع في أمر واحد
-CMD ["sh", "-c", "./node_modules/.bin/prisma db push --schema ./prisma/schema.prisma && node server.js"]
+# ١) إصلاح تكرارات (projectId, invoiceNumber) إن وُجدت  ٢) تطبيق الـ schema  ٣) تشغيل السيرفر
+CMD ["sh", "-c", "node prisma/scripts/fix-invoice-duplicates.js && ./node_modules/.bin/prisma db push --schema ./prisma/schema.prisma --accept-data-loss && node server.js"]
