@@ -250,15 +250,15 @@ export default function PaymentsPage() {
     <div className="flex-1 p-8 lg:p-12 overflow-y-auto">
       <div className="max-w-7xl mx-auto space-y-8">
         {/* Header */}
-        <div>
-          <h1 className="text-3xl font-semibold text-gray-900 mb-2 flex items-center gap-3">
-            <div className="p-2.5 bg-gray-100 rounded-md">
-              <TrendingUp className="h-6 w-6 text-gray-600" />
+        <div className="border-b border-gray-200 pb-6">
+          <h1 className="text-2xl font-bold text-gray-900 mb-1 flex items-center gap-3">
+            <div className="p-2 bg-primary/10 rounded-lg">
+              <TrendingUp className="h-5 w-5 text-primary" />
             </div>
             المدفوعات
           </h1>
-          <p className="text-gray-500">
-            {unitId ? "عرض مدفوعات الوحدة المحددة" : "عرض ومتابعة جميع المدفوعات والتحويلات"}
+          <p className="text-sm text-muted-foreground">
+            {unitId ? "عرض مدفوعات الوحدة المحددة" : "عرض ومتابعة جميع المدفوعات (فواتير + رواتب تقنيين)"}
           </p>
         </div>
 
@@ -275,60 +275,47 @@ export default function PaymentsPage() {
                 </div>
               ) : unitContext ? (
                 <div className="flex flex-col gap-4">
-                  <div className="flex flex-wrap items-center gap-3">
-                    <Badge variant="outline" className="bg-gray-50 border-gray-200 text-gray-700">
-                      {unitContext.code}
-                    </Badge>
-                    <span className="font-semibold text-gray-900">{unitContext.name}</span>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Badge variant="outline">{unitContext.code}</Badge>
+                    <span className="font-semibold">{unitContext.name}</span>
                     {unitContext.project?.name && (
-                      <Badge variant="secondary" className="text-xs">
-                        {unitContext.project.name}
-                      </Badge>
+                      <Badge variant="secondary" className="text-xs">{unitContext.project.name}</Badge>
                     )}
                     {unitContext.isActive !== undefined && (
-                      <Badge
-                        className={
-                          unitContext.isActive
-                            ? "bg-[#ECFDF5] border border-[#16A34A]/20 text-[#16A34A]"
-                            : "bg-[#FEF2F2] border border-[#DC2626]/20 text-[#DC2626]"
-                        }
-                        variant="outline"
-                      >
+                      <Badge variant={unitContext.isActive ? "default" : "secondary"}>
                         {unitContext.isActive ? "نشطة" : "غير نشطة"}
                       </Badge>
                     )}
                   </div>
-
-                  <div className="grid grid-cols-1 md:grid-cols-4 gap-3">
-                    <div className="bg-gray-50 rounded-md border border-[#E5E7EB] p-3">
-                      <p className="text-xs text-gray-500">عدد السكان</p>
-                      <p className="text-lg font-semibold text-gray-900">{unitContext._count?.residents ?? 0}</p>
+                  <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+                    <div className="rounded-lg border bg-muted/30 p-3">
+                      <p className="text-xs text-muted-foreground">عدد السكان</p>
+                      <p className="text-lg font-semibold">{unitContext._count?.residents ?? 0}</p>
                     </div>
-                    <div className="bg-gray-50 rounded-md border border-[#E5E7EB] p-3">
-                      <p className="text-xs text-gray-500">التذاكر</p>
-                      <p className="text-lg font-semibold text-gray-900">{unitContext._count?.tickets ?? 0}</p>
+                    <div className="rounded-lg border bg-muted/30 p-3">
+                      <p className="text-xs text-muted-foreground">التذاكر</p>
+                      <p className="text-lg font-semibold">{unitContext._count?.tickets ?? 0}</p>
                     </div>
-                    <div className="bg-gray-50 rounded-md border border-[#E5E7EB] p-3">
-                      <p className="text-xs text-gray-500">طلبات التوصيل</p>
-                      <p className="text-lg font-semibold text-gray-900">{unitContext._count?.deliveryOrders ?? 0}</p>
+                    <div className="rounded-lg border bg-muted/30 p-3">
+                      <p className="text-xs text-muted-foreground">طلبات التوصيل</p>
+                      <p className="text-lg font-semibold">{unitContext._count?.deliveryOrders ?? 0}</p>
                     </div>
-                    <div className="bg-gray-50 rounded-md border border-[#E5E7EB] p-3">
-                      <p className="text-xs text-gray-500">يوم التحصيل</p>
-                      <p className="text-lg font-semibold text-gray-900">{unitContext.monthlyBillingDay ?? "-"}</p>
+                    <div className="rounded-lg border bg-muted/30 p-3">
+                      <p className="text-xs text-muted-foreground">يوم التحصيل</p>
+                      <p className="text-lg font-semibold">{unitContext.monthlyBillingDay != null ? `اليوم ${unitContext.monthlyBillingDay}` : "—"}</p>
                     </div>
                   </div>
-
                   <div className="flex flex-wrap gap-2">
-                    <Button variant="outline" onClick={() => router.push(`/dashboard/operational-units/${unitContext.id}`)}>
+                    <Button variant="outline" size="sm" onClick={() => router.push(`/dashboard/operational-units/${unitContext.id}`)}>
                       عرض بيانات الوحدة
                     </Button>
-                    <Button variant="outline" onClick={() => router.push(`/dashboard/invoices?unit=${unitContext.id}`)}>
+                    <Button variant="outline" size="sm" onClick={() => router.push(`/dashboard/invoices?unit=${unitContext.id}`)}>
                       فواتير الوحدة
                     </Button>
                   </div>
                 </div>
               ) : (
-                <p className="text-gray-500">تعذر تحميل بيانات الوحدة</p>
+                <p className="text-muted-foreground text-sm">تعذر تحميل بيانات الوحدة</p>
               )}
             </CardContent>
           </Card>
@@ -342,58 +329,55 @@ export default function PaymentsPage() {
         )}
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-          {/* Total Payments */}
-          <div className="bg-white border border-[#E5E7EB] rounded-[12px] p-4 shadow-sm">
-            <div className="flex items-start justify-between mb-3">
-              <div className="p-2.5 bg-gray-100 rounded-md">
-                <CheckCircle2 className="w-5 h-5 text-gray-600" />
-              </div>
-            </div>
-            <p className="text-gray-500 text-sm mb-1">إجمالي المدفوعات</p>
-            <p className="text-3xl font-semibold text-gray-900">{stats.count}</p>
-          </div>
-
-          {/* Total Amount */}
-          <div className="bg-white border border-[#E5E7EB] rounded-[12px] p-4 shadow-sm">
-            <div className="flex items-start justify-between mb-3">
-              <div className="p-2.5 bg-gray-100 rounded-md">
-                <DollarSign className="w-5 h-5 text-gray-600" />
-              </div>
-            </div>
-            <p className="text-gray-500 text-sm mb-1">المجموع</p>
-            <p className="text-3xl font-semibold text-gray-900">{stats.total}</p>
-            <p className="text-xs text-gray-500 mt-2">جنيه مصري</p>
-          </div>
-
-          {/* Invoice Payments */}
-          <div className="bg-white border border-[#E5E7EB] rounded-[12px] p-4 shadow-sm">
-            <div className="flex items-start justify-between mb-3">
-              <div className="p-2.5 bg-gray-100 rounded-md">
-                <CreditCard className="w-5 h-5 text-gray-600" />
-              </div>
-            </div>
-            <p className="text-gray-500 text-sm mb-1">دفعات الفواتير</p>
-            <p className="text-3xl font-semibold text-gray-900">{stats.invoiceAmount}</p>
-            <p className="text-xs text-gray-500 mt-2">{stats.invoiceCount} معاملة</p>
-          </div>
-
-          {/* Tech Payments */}
-          <div className="bg-white border border-[#E5E7EB] rounded-[12px] p-4 shadow-sm">
-            <div className="flex items-start justify-between mb-3">
-              <div className="p-2.5 bg-gray-100 rounded-md">
-                <User className="w-5 h-5 text-gray-600" />
-              </div>
-            </div>
-            <p className="text-gray-500 text-sm mb-1">رواتب التقنيين</p>
-            <p className="text-3xl font-semibold text-gray-900">{stats.techAmount}</p>
-            <p className="text-xs text-gray-500 mt-2">{stats.techCount} معاملة</p>
-          </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">عدد المعاملات</CardTitle>
+              <CheckCircle2 className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold">{stats.count}</p>
+              <p className="text-xs text-muted-foreground mt-1">مدفوعة بعد التصفية</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">المجموع</CardTitle>
+              <DollarSign className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold">{stats.total}</p>
+              <p className="text-xs text-muted-foreground mt-1">جنيه مصري</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">دفعات الفواتير</CardTitle>
+              <CreditCard className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold">{stats.invoiceAmount}</p>
+              <p className="text-xs text-muted-foreground mt-1">{stats.invoiceCount} معاملة</p>
+            </CardContent>
+          </Card>
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium text-muted-foreground">رواتب التقنيين</CardTitle>
+              <User className="h-4 w-4 text-muted-foreground" />
+            </CardHeader>
+            <CardContent>
+              <p className="text-2xl font-bold">{stats.techAmount}</p>
+              <p className="text-xs text-muted-foreground mt-1">{stats.techCount} معاملة</p>
+            </CardContent>
+          </Card>
         </div>
 
         {/* Filters */}
-        <div className="bg-white border border-[#E5E7EB] rounded-[12px] p-4 shadow-sm">
-          <h2 className="text-base font-semibold text-gray-900 mb-4">البحث والتصفية</h2>
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">البحث والتصفية</CardTitle>
+          </CardHeader>
+          <CardContent>
           
           <div className="space-y-4">
             <div>
@@ -448,26 +432,34 @@ export default function PaymentsPage() {
             {(searchTerm || filterType !== "all" || dateFrom || dateTo) && (
               <Button
                 variant="outline"
+                size="sm"
                 onClick={() => {
                   setSearchTerm("")
                   setFilterType("all")
                   setDateFrom("")
                   setDateTo("")
                 }}
-                className="w-full border-gray-300 text-gray-700 hover:bg-gray-50"
               >
                 مسح التصفية
               </Button>
             )}
           </div>
-        </div>
+          </CardContent>
+        </Card>
 
         {/* Payments Table */}
-        <div className="bg-white border border-[#E5E7EB] rounded-[12px] p-4 shadow-sm overflow-x-auto">
+        <Card>
+          <CardHeader className="pb-3">
+            <CardTitle className="text-base">قائمة المدفوعات</CardTitle>
+            <p className="text-sm text-muted-foreground mt-1">
+              عرض {filteredPayments.length} مدفوعة
+            </p>
+          </CardHeader>
+          <CardContent className="p-0 overflow-x-auto">
           {filteredPayments.length === 0 ? (
-            <div className="text-center py-12 text-gray-500">
-              <DollarSign className="h-12 w-12 mx-auto opacity-50 mb-2 text-gray-400" />
-              <p>لا توجد مدفوعات</p>
+            <div className="text-center py-12 px-4 text-muted-foreground">
+              <DollarSign className="h-12 w-12 mx-auto opacity-50 mb-2" />
+              <p>لا توجد مدفوعات تطابق التصفية</p>
             </div>
           ) : (
             <div className="overflow-x-auto">
@@ -546,7 +538,8 @@ export default function PaymentsPage() {
               </Table>
             </div>
           )}
-        </div>
+          </CardContent>
+        </Card>
       </div>
     </div>
   )

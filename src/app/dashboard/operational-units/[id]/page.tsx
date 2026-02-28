@@ -7,6 +7,16 @@ import { useParams } from "next/navigation"
 import { AlertCircle, Loader, Plus, Edit, DollarSign, Users, FileText, MapPin, Calendar, CheckCircle2, XCircle, Building2, Phone, Mail, Trash2, Save } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from "@/components/ui/alert-dialog"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -33,6 +43,7 @@ interface UnitData {
   project: {
     id: string
     name: string
+    monthlyBillingDay?: number | null
   }
 }
 
@@ -242,6 +253,11 @@ export default function OperationalUnitDetailPage() {
   const [editNameDialog, setEditNameDialog] = useState(false)
   const [savingName, setSavingName] = useState(false)
   const [tempName, setTempName] = useState<string>("")
+
+  // Delete unit
+  const [deleteUnitOpen, setDeleteUnitOpen] = useState(false)
+  const [deleteUnitLoading, setDeleteUnitLoading] = useState(false)
+  const [deleteUnitError, setDeleteUnitError] = useState<string | null>(null)
 
   // Add resident state
   const [addResidentDialog, setAddResidentDialog] = useState(false)
@@ -622,6 +638,26 @@ export default function OperationalUnitDetailPage() {
     }
   }
 
+  const handleDeleteUnit = async () => {
+    if (!unitId || !unit?.project?.id) return
+    setDeleteUnitError(null)
+    setDeleteUnitLoading(true)
+    try {
+      const res = await fetch(`/api/operational-units/${unitId}`, { method: "DELETE" })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) {
+        setDeleteUnitError(data?.error || "فشل حذف الوحدة. قد تحتوي على سكان أو تذاكر أو فواتير.")
+        return
+      }
+      setDeleteUnitOpen(false)
+      router.push(`/dashboard/projects/${unit.project.id}`)
+    } catch (err) {
+      setDeleteUnitError("حدث خطأ أثناء الحذف")
+    } finally {
+      setDeleteUnitLoading(false)
+    }
+  }
+
   const handleDeleteOwner = async () => {
     if (!ownerAssociation) return
     const confirmed = window.confirm("هل أنت متأكد من حذف جهة المالك لهذا الوحدة؟")
@@ -683,16 +719,49 @@ export default function OperationalUnitDetailPage() {
         </div>
         <div className="flex items-center gap-2">
           {isAdmin && (
-            <Button variant="outline" onClick={() => setEditNameDialog(true)} className="gap-2">
-              <Edit className="h-4 w-4" />
-              تعديل اسم الوحدة
-            </Button>
+            <>
+              <Button variant="outline" onClick={() => setEditNameDialog(true)} className="gap-2">
+                <Edit className="h-4 w-4" />
+                تعديل اسم الوحدة
+              </Button>
+              <Button
+                variant="outline"
+                className="gap-2 border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300"
+                onClick={() => { setDeleteUnitError(null); setDeleteUnitOpen(true) }}
+              >
+                <Trash2 className="h-4 w-4" />
+                حذف الوحدة
+              </Button>
+            </>
           )}
           <Badge variant={unit.isActive ? "default" : "secondary"}>
             {unit.isActive ? "Active" : "Inactive"}
           </Badge>
         </div>
       </div>
+
+      {/* تأكيد حذف الوحدة */}
+      <AlertDialog open={deleteUnitOpen} onOpenChange={(o) => { setDeleteUnitOpen(o); if (!o) setDeleteUnitError(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>حذف الوحدة</AlertDialogTitle>
+            <AlertDialogDescription>
+              هل أنت متأكد من حذف الوحدة &quot;{unit.name}&quot;؟ لا يمكن التراجع. إن كانت الوحدة تحتوي على سكان أو تذاكر أو فواتير قد يفشل الحذف.
+            </AlertDialogDescription>
+            {deleteUnitError && <p className="text-sm text-red-600 font-medium">{deleteUnitError}</p>}
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteUnitLoading}>إلغاء</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); handleDeleteUnit() }}
+              disabled={deleteUnitLoading}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {deleteUnitLoading ? "جاري الحذف..." : "حذف"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Monthly Billing Card */}
       {(isAdmin || isAccountant) && (
@@ -729,7 +798,9 @@ export default function OperationalUnitDetailPage() {
                 <div className="flex items-center gap-2">
                   <Calendar className="h-5 w-5 text-blue-400" />
                   <span className="text-2xl font-bold text-blue-400">
-                    اليوم {unit.monthlyBillingDay || 1}
+                    {unit.monthlyBillingDay != null
+                      ? `اليوم ${unit.monthlyBillingDay}`
+                      : `من المشروع: اليوم ${unit.project?.monthlyBillingDay ?? 1}`}
                   </span>
                 </div>
               </div>

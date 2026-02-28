@@ -3,7 +3,7 @@
 import { useState, useEffect, useMemo } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { useSession } from "next-auth/react"
-import { Building2, Plus, AlertCircle, Loader } from "lucide-react"
+import { Building2, Plus, AlertCircle, Loader, Trash2 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -19,6 +19,17 @@ import {
 } from "@/components/ui/dialog"
 import { Badge } from "@/components/ui/badge"
 import { SearchBar } from "@/components/SearchBar"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from "@/components/ui/alert-dialog"
 
 interface Project {
   id: string
@@ -54,7 +65,54 @@ export default function OperationalUnitsPage() {
   const [projectFilter, setProjectFilter] = useState("all")
   const [statusFilter, setStatusFilter] = useState("active")
 
+  // Selection for bulk delete
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [bulkDeleteOpen, setBulkDeleteOpen] = useState(false)
+  const [bulkDeleteLoading, setBulkDeleteLoading] = useState(false)
+  const [bulkDeleteError, setBulkDeleteError] = useState<string | null>(null)
+
   const isAdmin = session?.user?.role === "ADMIN"
+
+  const toggleSelect = (id: string, e: React.MouseEvent) => {
+    e.stopPropagation()
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const selectAllFiltered = () => {
+    if (selectedIds.size === filteredUnits.length) {
+      setSelectedIds(new Set())
+    } else {
+      setSelectedIds(new Set(filteredUnits.map((u) => u.id)))
+    }
+  }
+
+  const handleBulkDelete = async () => {
+    const ids = Array.from(selectedIds)
+    if (ids.length === 0) return
+    setBulkDeleteLoading(true)
+    setBulkDeleteError(null)
+    try {
+      const res = await fetch("/api/operational-units/bulk-delete", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ids })
+      })
+      const data = await res.json().catch(() => ({}))
+      if (!res.ok) throw new Error(data.error || "فشل الحذف")
+      setBulkDeleteOpen(false)
+      setSelectedIds(new Set())
+      fetchUnits()
+    } catch (err) {
+      setBulkDeleteError(err instanceof Error ? err.message : "فشل الحذف الجماعي")
+    } finally {
+      setBulkDeleteLoading(false)
+    }
+  }
 
   useEffect(() => {
     if (status === "loading" || !session) return
@@ -249,8 +307,49 @@ export default function OperationalUnitsPage() {
               مسح الفلاتر
             </Button>
           )}
+          {isAdmin && filteredUnits.length > 0 && (
+            <>
+              <Button variant="outline" size="sm" onClick={selectAllFiltered}>
+                {selectedIds.size === filteredUnits.length ? "إلغاء تحديد الكل" : "تحديد الكل"}
+              </Button>
+              {selectedIds.size > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-red-200 text-red-600 hover:bg-red-50"
+                  onClick={(e) => { e.preventDefault(); setBulkDeleteError(null); setBulkDeleteOpen(true) }}
+                >
+                  <Trash2 className="h-4 w-4 ml-2" />
+                  حذف المحدد ({selectedIds.size})
+                </Button>
+              )}
+            </>
+          )}
         </div>
       </div>
+
+      {/* تأكيد حذف الوحدات المحددة */}
+      <AlertDialog open={bulkDeleteOpen} onOpenChange={(o) => { setBulkDeleteOpen(o); if (!o) setBulkDeleteError(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>حذف الوحدات المحددة</AlertDialogTitle>
+            <AlertDialogDescription>
+              سيتم حذف {selectedIds.size} وحدة وكل بياناتها المرتبطة (سكان، تذاكر، فواتير، …). لا يمكن التراجع. هل أنت متأكد؟
+            </AlertDialogDescription>
+            {bulkDeleteError && <p className="text-sm text-red-600 font-medium">{bulkDeleteError}</p>}
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkDeleteLoading}>إلغاء</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); handleBulkDelete() }}
+              disabled={bulkDeleteLoading}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {bulkDeleteLoading ? "جاري الحذف..." : "حذف"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Units Grid */}
       {filteredUnits.length === 0 ? (
@@ -277,8 +376,13 @@ export default function OperationalUnitsPage() {
             <div
               key={unit.id}
               onClick={() => router.push(`/dashboard/operational-units/${unit.id}`)}
-              className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm cursor-pointer"
+              className="bg-white border border-gray-200 rounded-xl p-6 shadow-sm cursor-pointer relative"
             >
+              {isAdmin && (
+                <div className="absolute top-4 left-4" onClick={(e) => toggleSelect(unit.id, e)}>
+                  <Checkbox checked={selectedIds.has(unit.id)} onCheckedChange={() => {}} />
+                </div>
+              )}
               <div className="space-y-4">
                 {/* Header */}
                 <div>

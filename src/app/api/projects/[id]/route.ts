@@ -73,6 +73,7 @@ export async function PATCH(
   }
 }
 
+/** حذف مشروع مع كل وحداته وكل البيانات المرتبطة دفعة واحدة */
 export async function DELETE(
   _req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -94,24 +95,73 @@ export async function DELETE(
       return NextResponse.json({ error: "Project not found" }, { status: 404 })
     }
 
-    if (project.operationalUnits.length > 0) {
-      return NextResponse.json(
-        {
-          error: "لا يمكن حذف المشروع لأنه يحتوي على وحدات. احذف أو انقل الوحدات أولاً."
-        },
-        { status: 400 }
-      )
-    }
+    await db.$transaction(async (tx) => {
+      const unitIds = project.operationalUnits.map((u) => u.id)
 
-    await db.project.delete({
-      where: { id }
+      for (const unitId of unitIds) {
+        const unitInvoices = await tx.invoice.findMany({ where: { unitId }, select: { id: true } })
+        const invoiceIds = unitInvoices.map((i) => i.id)
+        await tx.payment.deleteMany({ where: { invoiceId: { in: invoiceIds } } })
+        await tx.unitExpense.updateMany({ where: { unitId }, data: { claimInvoiceId: null } })
+        await tx.operationalExpense.updateMany({ where: { unitId }, data: { claimInvoiceId: null } })
+        await tx.invoice.deleteMany({ where: { unitId } })
+        await tx.accountingNote.deleteMany({ where: { unitId } })
+        await tx.deliveryOrder.deleteMany({ where: { unitId } })
+        await tx.ticket.deleteMany({ where: { unitId } })
+        await tx.resident.deleteMany({ where: { unitId } })
+        await tx.technicianWork.deleteMany({ where: { unitId } })
+        await tx.staffWorkLog.deleteMany({ where: { unitId } })
+        await tx.staffUnitAssignment.deleteMany({ where: { unitId } })
+        const staffInUnit = await tx.staff.findMany({ where: { unitId }, select: { id: true } })
+        const staffIds = staffInUnit.map((s) => s.id)
+        if (staffIds.length > 0) {
+          await tx.staffAdvance.deleteMany({ where: { staffId: { in: staffIds } } })
+          await tx.payrollItem.deleteMany({ where: { staffId: { in: staffIds } } })
+          const advances = await tx.pmAdvance.findMany({ where: { staffId: { in: staffIds } }, select: { id: true } })
+          await tx.operationalExpense.updateMany({
+            where: { pmAdvanceId: { in: advances.map((a) => a.id) } },
+            data: { pmAdvanceId: null }
+          })
+          await tx.unitExpense.updateMany({
+            where: { pmAdvanceId: { in: advances.map((a) => a.id) } },
+            data: { pmAdvanceId: null }
+          })
+          await tx.accountingNote.updateMany({
+            where: { pmAdvanceId: { in: advances.map((a) => a.id) } },
+            data: { pmAdvanceId: null }
+          })
+          await tx.pmAdvance.deleteMany({ where: { staffId: { in: staffIds } } })
+          await tx.staffProjectAssignment.deleteMany({ where: { staffId: { in: staffIds } } })
+          await tx.staff.deleteMany({ where: { unitId } })
+        }
+        await tx.ownerAssociation.deleteMany({ where: { unitId } })
+        await tx.unitExpense.deleteMany({ where: { unitId } })
+        await tx.operationalExpense.deleteMany({ where: { unitId } })
+        await tx.operationalUnit.delete({ where: { id: unitId } })
+      }
+
+      const projectInvoiceIds = await tx.invoice.findMany({
+        where: { projectId: id },
+        select: { id: true }
+      })
+      const ids = projectInvoiceIds.map((i) => i.id)
+      if (ids.length > 0) {
+        await tx.payment.deleteMany({ where: { invoiceId: { in: ids } } })
+      }
+      await tx.invoice.deleteMany({ where: { projectId: id } })
+      await tx.accountingNote.deleteMany({ where: { projectId: id } })
+      await tx.pmAdvance.deleteMany({ where: { projectId: id } })
+      await tx.projectAssignment.deleteMany({ where: { projectId: id } })
+      await tx.projectElement.deleteMany({ where: { projectId: id } })
+      await tx.staffProjectAssignment.deleteMany({ where: { projectId: id } })
+      await tx.project.delete({ where: { id } })
     })
 
-    return NextResponse.json({ success: true, message: "تم حذف المشروع" })
+    return NextResponse.json({ success: true, message: "تم حذف المشروع وجميع وحداته وبياناته" })
   } catch (error) {
     console.error("Error deleting project:", error)
     return NextResponse.json(
-      { error: "Failed to delete project" },
+      { error: "Failed to delete project", details: error instanceof Error ? error.message : String(error) },
       { status: 500 }
     )
   }

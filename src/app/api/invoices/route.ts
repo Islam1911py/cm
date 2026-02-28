@@ -11,13 +11,13 @@ async function ensureMonthlyServiceInvoicesForToday() {
   const currentDay = today.getDate()
   const currentMonth = today.toISOString().substring(0, 7)
 
-  const unitsToInvoice = await db.operationalUnit.findMany({
-    where: {
-      isActive: true,
-      monthlyBillingDay: currentDay
-    },
+  const allActiveUnits = await db.operationalUnit.findMany({
+    where: { isActive: true },
     include: { project: true }
   })
+  const unitsToInvoice = allActiveUnits.filter(
+    (u) => (u.monthlyBillingDay ?? u.project.monthlyBillingDay ?? 1) === currentDay
+  )
 
   const byProject = new Map<string, { project: { id: string; name: string }; totalAmount: number }>()
   for (const unit of unitsToInvoice) {

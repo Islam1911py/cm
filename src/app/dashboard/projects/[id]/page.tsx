@@ -143,6 +143,7 @@ export default function ProjectDetailsPage() {
   const [sectionSearch, setSectionSearch] = useState("")
   const [editOpen, setEditOpen] = useState(false)
   const [editName, setEditName] = useState("")
+  const [editBillingDay, setEditBillingDay] = useState<number>(1)
   const [editSaving, setEditSaving] = useState(false)
   const [deleteOpen, setDeleteOpen] = useState(false)
   const [deleteLoading, setDeleteLoading] = useState(false)
@@ -186,25 +187,32 @@ export default function ProjectDetailsPage() {
   const openEditDialog = () => {
     if (project) {
       setEditName(project.name)
+      setEditBillingDay(project.monthlyBillingDay ?? 1)
       setEditOpen(true)
     }
   }
 
   const saveProjectEdit = async () => {
     if (!project || !editName.trim()) return
+    const day = Math.min(31, Math.max(1, editBillingDay))
     setEditSaving(true)
     try {
       const res = await fetch(`/api/projects/${project.id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: editName.trim() }),
+        body: JSON.stringify({
+          name: editName.trim(),
+          monthlyBillingDay: day,
+        }),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
         throw new Error(data.error || "فشل التحديث")
       }
       const updated = await res.json()
-      setProject((prev) => (prev ? { ...prev, name: updated.name } : null))
+      setProject((prev) =>
+        prev ? { ...prev, name: updated.name, monthlyBillingDay: updated.monthlyBillingDay ?? prev.monthlyBillingDay } : null
+      )
       setEditOpen(false)
     } catch (err) {
       setError(err instanceof Error ? err.message : "فشل تحديث المشروع")
@@ -365,6 +373,11 @@ export default function ProjectDetailsPage() {
           <p className="text-gray-500 text-sm mt-1">
             تاريخ الإنشاء: {new Date(project.createdAt).toLocaleDateString("ar-EG")}
           </p>
+          {canViewFinancialDetails && (
+            <p className="text-gray-600 text-sm mt-1">
+              يوم التحصيل الشهري للمشروع: اليوم {project.monthlyBillingDay ?? 1}
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           {isAdmin && (
@@ -408,7 +421,7 @@ export default function ProjectDetailsPage() {
         <DialogContent className="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>تعديل المشروع</DialogTitle>
-            <DialogDescription>غيّر اسم المشروع ثم احفظ.</DialogDescription>
+            <DialogDescription>غيّر اسم المشروع ويوم التحصيل الشهري ثم احفظ.</DialogDescription>
           </DialogHeader>
           <div className="grid gap-4 py-4">
             <div className="grid gap-2">
@@ -419,6 +432,18 @@ export default function ProjectDetailsPage() {
                 placeholder="اسم المشروع"
                 className="border-gray-300"
               />
+            </div>
+            <div className="grid gap-2">
+              <label className="text-sm font-medium text-gray-700">يوم التحصيل الشهري للمشروع (1–31)</label>
+              <Input
+                type="number"
+                min={1}
+                max={31}
+                value={editBillingDay}
+                onChange={(e) => setEditBillingDay(parseInt(e.target.value, 10) || 1)}
+                className="border-gray-300"
+              />
+              <p className="text-xs text-gray-500">الوحدات التي لا يحدد لها يوم تحصيل ستستخدم هذا اليوم.</p>
             </div>
           </div>
           <DialogFooter>
@@ -438,7 +463,7 @@ export default function ProjectDetailsPage() {
           <AlertDialogHeader>
             <AlertDialogTitle>حذف المشروع</AlertDialogTitle>
             <AlertDialogDescription>
-              هل أنت متأكد من حذف المشروع &quot;{project.name}&quot;؟ لا يمكن التراجع. يمكن حذف المشروع فقط إذا لم يكن فيه وحدات تشغيلية.
+              هل أنت متأكد من حذف المشروع &quot;{project.name}&quot;؟ سيتم حذف المشروع وجميع وحداته وكل البيانات المرتبطة (سكان، تذاكر، فواتير، …). لا يمكن التراجع.
             </AlertDialogDescription>
             {deleteError && (
               <p className="text-red-600 text-sm font-medium">{deleteError}</p>

@@ -123,7 +123,7 @@ export async function PATCH(
   }
 }
 
-// DELETE /api/operational-units/[id]
+// DELETE /api/operational-units/[id] — حذف الوحدة وكل بياناتها المرتبطة
 export async function DELETE(
   req: NextRequest,
   { params }: { params: Promise<{ id: string }> }
@@ -136,8 +136,52 @@ export async function DELETE(
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    await db.operationalUnit.delete({
-      where: { id }
+    const unit = await db.operationalUnit.findUnique({ where: { id }, select: { id: true } })
+    if (!unit) {
+      return NextResponse.json({ error: "Unit not found" }, { status: 404 })
+    }
+
+    await db.$transaction(async (tx) => {
+      const unitId = id
+      const unitInvoices = await tx.invoice.findMany({ where: { unitId }, select: { id: true } })
+      const invoiceIds = unitInvoices.map((i) => i.id)
+      await tx.payment.deleteMany({ where: { invoiceId: { in: invoiceIds } } })
+      await tx.unitExpense.updateMany({ where: { unitId }, data: { claimInvoiceId: null } })
+      await tx.operationalExpense.updateMany({ where: { unitId }, data: { claimInvoiceId: null } })
+      await tx.invoice.deleteMany({ where: { unitId } })
+      await tx.accountingNote.deleteMany({ where: { unitId } })
+      await tx.deliveryOrder.deleteMany({ where: { unitId } })
+      await tx.ticket.deleteMany({ where: { unitId } })
+      await tx.resident.deleteMany({ where: { unitId } })
+      await tx.technicianWork.deleteMany({ where: { unitId } })
+      await tx.staffWorkLog.deleteMany({ where: { unitId } })
+      await tx.staffUnitAssignment.deleteMany({ where: { unitId } })
+      const staffInUnit = await tx.staff.findMany({ where: { unitId }, select: { id: true } })
+      const staffIds = staffInUnit.map((s) => s.id)
+      if (staffIds.length > 0) {
+        await tx.staffAdvance.deleteMany({ where: { staffId: { in: staffIds } } })
+        await tx.payrollItem.deleteMany({ where: { staffId: { in: staffIds } } })
+        const advances = await tx.pmAdvance.findMany({ where: { staffId: { in: staffIds } }, select: { id: true } })
+        await tx.operationalExpense.updateMany({
+          where: { pmAdvanceId: { in: advances.map((a) => a.id) } },
+          data: { pmAdvanceId: null }
+        })
+        await tx.unitExpense.updateMany({
+          where: { pmAdvanceId: { in: advances.map((a) => a.id) } },
+          data: { pmAdvanceId: null }
+        })
+        await tx.accountingNote.updateMany({
+          where: { pmAdvanceId: { in: advances.map((a) => a.id) } },
+          data: { pmAdvanceId: null }
+        })
+        await tx.pmAdvance.deleteMany({ where: { staffId: { in: staffIds } } })
+        await tx.staffProjectAssignment.deleteMany({ where: { staffId: { in: staffIds } } })
+        await tx.staff.deleteMany({ where: { unitId } })
+      }
+      await tx.ownerAssociation.deleteMany({ where: { unitId } })
+      await tx.unitExpense.deleteMany({ where: { unitId } })
+      await tx.operationalExpense.deleteMany({ where: { unitId } })
+      await tx.operationalUnit.delete({ where: { id: unitId } })
     })
 
     return NextResponse.json({ success: true })

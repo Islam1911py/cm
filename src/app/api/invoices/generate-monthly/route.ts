@@ -25,17 +25,17 @@ export async function POST(req: Request) {
 
     console.log(`[Monthly Billing] Generating for Day: ${targetDay}`)
 
-    // بنجيب كل الوحدات اللي ميعاد تحصيلها هو اليوم ده
-    const unitsToInvoice = await db.operationalUnit.findMany({
-      where: {
-        isActive: true,
-        monthlyBillingDay: targetDay,
-      },
+    // بنجيب كل الوحدات اللي ميعاد تحصيلها (من الوحدة أو من المشروع) هو اليوم ده
+    const allUnits = await db.operationalUnit.findMany({
+      where: { isActive: true },
       include: {
         project: true,
         ownerAssociation: true
       }
     })
+    const unitsToInvoice = allUnits.filter(
+      (u) => (u.monthlyBillingDay ?? u.project.monthlyBillingDay ?? 1) === targetDay
+    )
 
     const invoicesCreated: any[] = []
     const skipped: any[] = []
@@ -127,27 +127,19 @@ export async function GET(req: Request) {
     const today = new Date()
     const currentDay = today.getDate()
 
-    const unitsToInvoice = await db.operationalUnit.findMany({
+    const allUnits = await db.operationalUnit.findMany({
       where: {
         isActive: true,
-        monthlyBillingDay: currentDay,
-        monthlyManagementFee: {
-          gt: 0
-        }
+        monthlyManagementFee: { gt: 0 }
       },
       include: {
-        project: {
-          select: {
-            name: true
-          }
-        },
-        ownerAssociation: {
-          select: {
-            name: true
-          }
-        }
+        project: { select: { name: true, monthlyBillingDay: true } },
+        ownerAssociation: { select: { name: true } }
       }
     })
+    const unitsToInvoice = allUnits.filter(
+      (u) => (u.monthlyBillingDay ?? u.project.monthlyBillingDay ?? 1) === currentDay
+    )
 
     return NextResponse.json({
       billingDay: currentDay,
