@@ -7,13 +7,23 @@ const { PrismaClient } = require('@prisma/client')
 const db = new PrismaClient()
 
 async function main() {
-  const dupes = await db.$queryRaw`
-    SELECT "projectId", "invoiceNumber", COUNT(*) as count
-    FROM "Invoice"
-    WHERE "projectId" IS NOT NULL
-    GROUP BY "projectId", "invoiceNumber"
-    HAVING COUNT(*) > 1
-  `
+  let dupes
+  try {
+    dupes = await db.$queryRaw`
+      SELECT "projectId", "invoiceNumber", COUNT(*) as count
+      FROM "Invoice"
+      WHERE "projectId" IS NOT NULL
+      GROUP BY "projectId", "invoiceNumber"
+      HAVING COUNT(*) > 1
+    `
+  } catch (e) {
+    // العمود projectId مش موجود = الداتابيز لسه بالـ schema القديم، خلّي db push يطبّق الأول
+    if (e.code === 'P2010' || e.meta?.code === '42703') {
+      console.log('[prisma-fix] projectId column not in DB yet, skipping. db push will apply schema.')
+      return
+    }
+    throw e
+  }
 
   if (dupes.length === 0) {
     console.log('[prisma-fix] No duplicate (projectId, invoiceNumber). Safe to db push.')
@@ -33,7 +43,6 @@ async function main() {
       select: { id: true }
     })
 
-    // أول صف نمسكه، الباقي نحذفه
     for (let i = 1; i < invoices.length; i++) {
       await db.invoice.delete({ where: { id: invoices[i].id } })
       deleted++
