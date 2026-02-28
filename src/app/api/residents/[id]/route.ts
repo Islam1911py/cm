@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { normalizePhone, validatePhoneForRegistration } from "@/lib/phone"
 
 // GET /api/residents/[id] - Get resident details
 export async function GET(
@@ -56,12 +57,20 @@ export async function PUT(
     const body = await req.json()
     const { name, email, phone, address, status } = body
 
+    if (phone !== undefined && phone != null && String(phone).trim() !== "") {
+      const v = validatePhoneForRegistration(phone)
+      if (!v.valid) return NextResponse.json({ error: v.error }, { status: 400 })
+    }
+    const phoneValue = phone !== undefined
+      ? (phone == null || String(phone).trim() === "" ? null : normalizePhone(phone) || null)
+      : undefined
+
     const resident = await db.resident.update({
       where: { id },
       data: {
         ...(name && { name }),
         ...(email !== undefined && { email }),
-        ...(phone !== undefined && { phone }),
+        ...(phoneValue !== undefined && { phone: phoneValue }),
         ...(address !== undefined && { address }),
         ...(status && { status })
       },

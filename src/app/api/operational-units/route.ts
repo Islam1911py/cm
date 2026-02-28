@@ -55,6 +55,7 @@ export async function GET(req: NextRequest) {
         project: {
           select: { id: true, name: true }
         },
+        unitType: { select: { id: true, name: true } },
         residents: true,
         _count: {
           select: { residents: true, tickets: true, deliveryOrders: true }
@@ -80,13 +81,26 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { projectId, name, code, type } = body
+    const { projectId, name, code, type, typeId } = body
 
-    if (!projectId || !name || !code || !type) {
-      return NextResponse.json({ error: "All fields are required" }, { status: 400 })
+    if (!projectId || !name || !code) {
+      return NextResponse.json({ error: "projectId, name, and code are required" }, { status: 400 })
+    }
+    if (!typeId && !type) {
+      return NextResponse.json({ error: "typeId (نوع الوحدة) or type is required" }, { status: 400 })
     }
 
-    // Check if code is unique within project
+    let typeName: string
+    let resolvedTypeId: string | null = null
+    if (typeId) {
+      const unitType = await db.unitType.findUnique({ where: { id: typeId } })
+      if (!unitType) return NextResponse.json({ error: "Unit type not found" }, { status: 400 })
+      typeName = unitType.name
+      resolvedTypeId = typeId
+    } else {
+      typeName = String(type).trim()
+    }
+
     const existingUnit = await db.operationalUnit.findFirst({
       where: {
         projectId,
@@ -104,7 +118,8 @@ export async function POST(req: NextRequest) {
         projectId,
         name,
         code,
-        type,
+        type: typeName,
+        typeId: resolvedTypeId,
         isActive: true
       }
     })

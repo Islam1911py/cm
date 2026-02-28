@@ -45,6 +45,7 @@ interface UnitData {
     name: string
     monthlyBillingDay?: number | null
   }
+  unitType?: { id: string; name: string } | null
 }
 
 interface Resident {
@@ -111,10 +112,8 @@ interface UnitSummary {
     code: string
     type: string
     isActive: boolean
-    project: {
-      id: string
-      name: string
-    }
+    project: { id: string; name: string }
+    unitType?: { id: string; name: string } | null
   }
   residents: {
     total: number

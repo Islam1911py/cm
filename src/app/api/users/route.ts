@@ -4,7 +4,7 @@ import bcrypt from "bcryptjs"
 
 import { authOptions } from "@/lib/auth"
 import { db } from "@/lib/db"
-import { normalizePhone } from "@/lib/phone"
+import { normalizePhone, validatePhoneForRegistration } from "@/lib/phone"
 
 export async function GET(request: NextRequest) {
   try {
@@ -117,6 +117,10 @@ export async function POST(request: NextRequest) {
 
     if (!whatsappPhone) {
       return NextResponse.json({ error: "Valid phone number is required" }, { status: 400 })
+    }
+    const phoneValidation = validatePhoneForRegistration(whatsappPhone)
+    if (!phoneValidation.valid) {
+      return NextResponse.json({ error: phoneValidation.error }, { status: 400 })
     }
 
     const existingUser = await db.user.findFirst({

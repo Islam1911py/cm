@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { normalizePhone, validatePhoneForRegistration } from "@/lib/phone"
 
 // GET /api/technicians/[id] - Get technician details
 export async function GET(
@@ -64,10 +65,17 @@ export async function PUT(
     if (!name) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 })
     }
+    if (phone !== undefined && phone != null && String(phone).trim() !== "") {
+      const v = validatePhoneForRegistration(phone)
+      if (!v.valid) return NextResponse.json({ error: v.error }, { status: 400 })
+    }
+    const phoneValue = phone !== undefined
+      ? (phone == null || String(phone).trim() === "" ? null : normalizePhone(phone) || null)
+      : undefined
 
     const updateData: any = {
       ...(name !== undefined && { name }),
-      ...(phone !== undefined && { phone }),
+      ...(phoneValue !== undefined && { phone: phoneValue }),
       ...(specialty !== undefined && { specialty }),
       ...(notes !== undefined && { notes }),
       updatedAt: new Date()

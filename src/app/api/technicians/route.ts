@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { normalizePhone, validatePhoneForRegistration } from "@/lib/phone"
 
 // GET /api/technicians - List all technicians
 export async function GET(req: NextRequest) {
@@ -52,11 +53,15 @@ export async function POST(req: NextRequest) {
     if (!name) {
       return NextResponse.json({ error: "Name is required" }, { status: 400 })
     }
+    if (phone != null && String(phone).trim() !== "") {
+      const v = validatePhoneForRegistration(phone)
+      if (!v.valid) return NextResponse.json({ error: v.error }, { status: 400 })
+    }
 
     const technician = await db.technician.create({
       data: {
         name,
-        phone: phone || null,
+        phone: phone != null && String(phone).trim() !== "" ? normalizePhone(phone) || null : null,
         specialty: specialty || "عام",
         notes: notes || null,
         createdAt: new Date(),

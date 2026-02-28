@@ -37,6 +37,7 @@ const navigationByRole = {
     { name: "لوحة التحكم", href: "/dashboard", icon: LayoutDashboard },
     { name: "المشاريع", href: "/dashboard/projects", icon: Building2 },
     { name: "أنواع المشاريع", href: "/dashboard/admin/project-types", icon: Building2 },
+    { name: "أنواع الوحدات", href: "/dashboard/admin/unit-types", icon: Building2 },
     { name: "الوحدات السكنية", href: "/dashboard/operational-units", icon: Building2 },
     { name: "السكان", href: "/dashboard/residents", icon: Users },
     { name: "التذاكر", href: "/dashboard/tickets", icon: Ticket },

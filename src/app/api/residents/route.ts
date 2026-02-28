@@ -2,6 +2,9 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { verifyN8nApiKey } from "@/lib/n8n-auth"
+import { identifyContactByPhone } from "@/lib/identity-by-phone"
+import { normalizePhone, validatePhoneForRegistration } from "@/lib/phone"
 
 // GET /api/residents - List all residents or filter by unit
 export async function GET(req: NextRequest) {
@@ -67,27 +70,51 @@ export async function GET(req: NextRequest) {
   }
 }
 
-// POST /api/residents - Create new resident
+// POST /api/residents - Create new resident OR identity check (when x-api-key + action IDENTITY / phone)
 export async function POST(req: NextRequest) {
   try {
-    const session = await getServerSession(authOptions)
+    const body = await req.json().catch(() => ({}))
+    const hasIdentityRequest = body?.action === "IDENTITY" || (body?.phone != null && req.headers.get("x-api-key"))
 
+    if (hasIdentityRequest && req.headers.get("x-api-key")) {
+      const auth = await verifyN8nApiKey(req)
+      if (!auth.valid || !auth.context) {
+        return NextResponse.json({ error: auth.error || "Unauthorized" }, { status: 401 })
+      }
+      const inputRaw = body?.phone ?? body?.senderPhone ?? body?.contact ?? body?.query
+      const input = typeof inputRaw === "string" ? String(inputRaw).trim() : ""
+      if (!input) {
+        return NextResponse.json(
+          { success: false, error: "phone is required", humanReadable: { ar: "أرسل رقم الهاتف المطلوب التعرف عليه." } },
+          { status: 400 }
+        )
+      }
+      const responseBody = await identifyContactByPhone(input)
+      return NextResponse.json(responseBody, { status: 200 })
+    }
+
+    const session = await getServerSession(authOptions)
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
     }
 
-    const body = await req.json()
     const { name, email, phone, address, unitId, status } = body
 
     if (!name || !unitId) {
       return NextResponse.json({ error: "Name and unitId are required" }, { status: 400 })
     }
 
+    if (phone != null && String(phone).trim() !== "") {
+      const v = validatePhoneForRegistration(phone)
+      if (!v.valid) return NextResponse.json({ error: v.error }, { status: 400 })
+    }
+    const residentPhoneNormalized = phone != null && String(phone).trim() !== "" ? normalizePhone(phone) || null : null
+
     const resident = await db.resident.create({
       data: {
         name,
         email: email || null,
-        phone: phone || null,
+        phone: residentPhoneNormalized,
         address: address || null,
         status: status || "ACTIVE",
         unitId

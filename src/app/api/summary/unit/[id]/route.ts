@@ -26,6 +26,7 @@ export async function GET(
             monthlyBillingDay: true,
           },
         },
+        unitType: { select: { id: true, name: true } },
       },
     })
 
@@ -106,6 +107,7 @@ export async function GET(
         monthlyManagementFee: unit.monthlyManagementFee,
         monthlyBillingDay: unit.monthlyBillingDay,
         project: unit.project,
+        unitType: unit.unitType ?? undefined,
       },
       residents: {
         total: residentsCount,

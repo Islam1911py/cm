@@ -108,11 +108,20 @@ model ProjectType {
   elements  ProjectElement[]
 }
 
+model UnitType {
+  id        String             @id @default(cuid())
+  name      String             @unique
+  createdAt DateTime           @default(now())
+  updatedAt DateTime           @updatedAt
+  units     OperationalUnit[]
+}
+
 model OperationalUnit {
   id                   String               @id @default(cuid())
   name                 String
   code                 String
   type                 String
+  typeId               String?
   projectId            String
   monthlyManagementFee Float?               @default(0)
   monthlyBillingDay    Int?                 @default(1)
@@ -122,6 +131,7 @@ model OperationalUnit {
   invoices            Invoice[]
   operationalExpenses OperationalExpense[] @relation("OperationalUnitExpenses")
   project             Project              @relation(fields: [projectId], references: [id])
+  unitType            UnitType?            @relation(fields: [typeId], references: [id])
   ownerAssociation    OwnerAssociation?
   residents           Resident[]
   staff               Staff[]

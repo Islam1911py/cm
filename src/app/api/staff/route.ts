@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { normalizePhone, validatePhoneForRegistration } from "@/lib/phone"
 
 // GET /api/staff - List staff (Admin & Accountant can see all, PM sees only their projects)
 export async function GET(req: NextRequest) {
@@ -184,6 +185,11 @@ export async function POST(req: NextRequest) {
       )
     }
 
+    if (phone != null && String(phone).trim() !== "") {
+      const v = validatePhoneForRegistration(phone)
+      if (!v.valid) return NextResponse.json({ error: v.error }, { status: 400 })
+    }
+
     const primaryUnitId = unitId || uniqueUnitIds[0]
 
     const staff = await db.staff.create({
@@ -191,7 +197,7 @@ export async function POST(req: NextRequest) {
         name,
         type,
         role,
-        phone: phone || null,
+        phone: phone != null && String(phone).trim() !== "" ? normalizePhone(phone) || null : null,
         salary: type === "OFFICE_STAFF" ? parseFloat(salary) : null,
         paymentDay: type === "OFFICE_STAFF" ? parseInt(paymentDay) : null,
         currency: currency || "EGP",
@@ -335,11 +341,19 @@ export async function PUT(
       }
     }
 
+    if (phone !== undefined && phone != null && String(phone).trim() !== "") {
+      const v = validatePhoneForRegistration(phone)
+      if (!v.valid) return NextResponse.json({ error: v.error }, { status: 400 })
+    }
+    const phoneValue = phone !== undefined
+      ? (phone == null || String(phone).trim() === "" ? null : normalizePhone(phone) || null)
+      : undefined
+
     const updateData: any = {
       ...(name !== undefined && { name }),
       ...(type !== undefined && { type: targetType }),
       ...(role !== undefined && { role }),
-      ...(phone !== undefined && { phone: phone || null }),
+      ...(phoneValue !== undefined && { phone: phoneValue }),
       ...(status !== undefined && { status }),
       ...(currency !== undefined && { currency }),
       ...(primaryUnitId !== undefined && { unitId: primaryUnitId }),

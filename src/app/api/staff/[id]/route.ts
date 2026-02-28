@@ -2,6 +2,7 @@ import { getServerSession } from "next-auth"
 import { NextRequest, NextResponse } from "next/server"
 import { authOptions } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { normalizePhone, validatePhoneForRegistration } from "@/lib/phone"
 
 export async function GET(
   request: NextRequest,
@@ -54,6 +55,14 @@ export async function PUT(
     const body = await request.json()
     const { name, type, role, phone, salary, status, unitId } = body
 
+    if (phone !== undefined && phone != null && String(phone).trim() !== "") {
+      const v = validatePhoneForRegistration(phone)
+      if (!v.valid) return NextResponse.json({ error: v.error }, { status: 400 })
+    }
+    const phoneValue = phone !== undefined
+      ? (phone == null || String(phone).trim() === "" ? null : normalizePhone(phone) || null)
+      : undefined
+
     // Validate staff type if provided
     if (type && !["OFFICE_STAFF", "FIELD_WORKER"].includes(type)) {
       return NextResponse.json(
@@ -76,7 +85,7 @@ export async function PUT(
         ...(name && { name }),
         ...(type && { type }),
         ...(role && { role }),
-        ...(phone !== undefined && { phone }),
+        ...(phoneValue !== undefined && { phone: phoneValue }),
         ...(salary !== undefined && {
           salary: type === "OFFICE_STAFF" ? parseFloat(salary) : null,
         }),

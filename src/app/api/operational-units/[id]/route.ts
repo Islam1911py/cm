@@ -51,18 +51,36 @@ export async function PUT(
     }
 
     const body = await req.json()
-    const { name, code, type, isActive } = body
+    const { name, code, type, typeId, isActive } = body
+
+    let typeName: string | undefined
+    let resolvedTypeId: string | null | undefined
+    if (typeId !== undefined) {
+      if (typeId == null || typeId === "") {
+        resolvedTypeId = null
+        if (type) typeName = String(type).trim()
+      } else {
+        const unitType = await db.unitType.findUnique({ where: { id: typeId } })
+        if (!unitType) return NextResponse.json({ error: "Unit type not found" }, { status: 400 })
+        typeName = unitType.name
+        resolvedTypeId = typeId
+      }
+    } else if (type) {
+      typeName = String(type).trim()
+    }
 
     const unit = await db.operationalUnit.update({
       where: { id },
       data: {
         ...(name && { name }),
         ...(code && { code }),
-        ...(type && { type }),
+        ...(typeName !== undefined && { type: typeName }),
+        ...(resolvedTypeId !== undefined && { typeId: resolvedTypeId }),
         ...(isActive !== undefined && { isActive })
       },
       include: {
         project: true,
+        unitType: { select: { id: true, name: true } },
         _count: {
           select: { residents: true, tickets: true, deliveryOrders: true }
         }
@@ -149,10 +167,12 @@ export async function DELETE(
       await tx.unitExpense.updateMany({ where: { unitId }, data: { claimInvoiceId: null } })
       await tx.operationalExpense.updateMany({ where: { unitId }, data: { claimInvoiceId: null } })
       await tx.invoice.deleteMany({ where: { unitId } })
+      await tx.operationalExpense.updateMany({ where: { unitId }, data: { convertedFromNoteId: null } })
       await tx.accountingNote.deleteMany({ where: { unitId } })
       await tx.deliveryOrder.deleteMany({ where: { unitId } })
       await tx.ticket.deleteMany({ where: { unitId } })
       await tx.resident.deleteMany({ where: { unitId } })
+      await tx.unitExpense.updateMany({ where: { unitId }, data: { technicianWorkId: null, staffWorkLogId: null } })
       await tx.technicianWork.deleteMany({ where: { unitId } })
       await tx.staffWorkLog.deleteMany({ where: { unitId } })
       await tx.staffUnitAssignment.deleteMany({ where: { unitId } })

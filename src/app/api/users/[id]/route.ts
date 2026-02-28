@@ -4,7 +4,7 @@ import { authOptions } from "@/lib/auth"
 import { db } from "@/lib/db"
 import { Prisma } from "@prisma/client"
 import bcrypt from "bcryptjs"
-import { normalizePhone } from "@/lib/phone"
+import { normalizePhone, validatePhoneForRegistration } from "@/lib/phone"
 
 const ALLOWED_ROLES = ["ADMIN", "ACCOUNTANT", "PROJECT_MANAGER"] as const
 type AllowedRole = (typeof ALLOWED_ROLES)[number]
@@ -85,6 +85,10 @@ export async function PATCH(
           { error: "Invalid whatsappPhone value" },
           { status: 400 }
         )
+      }
+      if (body.whatsappPhone != null && String(body.whatsappPhone).trim() !== "") {
+        const v = validatePhoneForRegistration(body.whatsappPhone)
+        if (!v.valid) return NextResponse.json({ error: v.error }, { status: 400 })
       }
       const normalizedPhone = normalizePhone(body.whatsappPhone)
       updateData.whatsappPhone = normalizedPhone ? normalizedPhone : null

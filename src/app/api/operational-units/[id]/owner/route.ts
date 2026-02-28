@@ -3,6 +3,7 @@ import { getServerSession } from "next-auth"
 
 import { authOptions } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { normalizePhone, validatePhoneForRegistration } from "@/lib/phone"
 
 type ContactType = "PHONE" | "EMAIL"
 
@@ -123,8 +124,13 @@ export async function PUT(
       typeof name === "string" ? name.trim() : name ?? undefined
     const sanitizedEmail =
       typeof email === "string" ? email.trim() : email ?? undefined
-    const sanitizedPhone =
+    let sanitizedPhone =
       typeof phone === "string" ? phone.trim() : phone ?? undefined
+    if (sanitizedPhone !== undefined && sanitizedPhone !== null && sanitizedPhone !== "") {
+      const v = validatePhoneForRegistration(sanitizedPhone)
+      if (!v.valid) return NextResponse.json({ error: v.error }, { status: 400 })
+      sanitizedPhone = normalizePhone(sanitizedPhone) || sanitizedPhone
+    }
 
     if (
       sanitizedName === undefined &&

@@ -37,6 +37,11 @@ interface Project {
   type: string
 }
 
+interface UnitType {
+  id: string
+  name: string
+}
+
 interface OperationalUnit {
   id: string
   name: string
@@ -45,6 +50,7 @@ interface OperationalUnit {
   projectId: string
   isActive: boolean
   project: Project
+  unitType?: { id: string; name: string } | null
 }
 
 export default function OperationalUnitsPage() {
@@ -53,9 +59,10 @@ export default function OperationalUnitsPage() {
   const projectIdParam = searchParams.get("projectId")
   const { data: session, status } = useSession()
   const [openCreateDialog, setOpenCreateDialog] = useState(false)
-  const [createFormData, setCreateFormData] = useState({ name: "", code: "", type: "", projectId: "" })
+  const [createFormData, setCreateFormData] = useState({ name: "", code: "", type: "", typeId: "", projectId: "" })
 
   const [projects, setProjects] = useState<Project[]>([])
+  const [unitTypes, setUnitTypes] = useState<UnitType[]>([])
   const [units, setUnits] = useState<OperationalUnit[]>([])
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -117,8 +124,21 @@ export default function OperationalUnitsPage() {
   useEffect(() => {
     if (status === "loading" || !session) return
     fetchProjects()
+    fetchUnitTypes()
     fetchUnits()
   }, [session, status])
+
+  const fetchUnitTypes = async () => {
+    try {
+      const res = await fetch("/api/unit-types")
+      if (res.ok) {
+        const data = await res.json()
+        setUnitTypes(data)
+      }
+    } catch (error) {
+      console.error("Error fetching unit types:", error)
+    }
+  }
 
   useEffect(() => {
     if (projectIdParam) {
@@ -194,15 +214,23 @@ export default function OperationalUnitsPage() {
   const handleCreateUnit = async (e: React.FormEvent) => {
     e.preventDefault()
 
-    if (!createFormData.projectId || !createFormData.name || !createFormData.code || !createFormData.type) {
-      alert("Please fill in all required fields")
+    const hasType = createFormData.typeId || createFormData.type.trim()
+    if (!createFormData.projectId || !createFormData.name || !createFormData.code || !hasType) {
+      alert("يرجى تعبئة جميع الحقول المطلوبة (المشروع، الاسم، الكود، نوع الوحدة)")
       return
     }
 
     try {
-      const payload = {
-        ...createFormData,
+      const payload: Record<string, unknown> = {
+        projectId: createFormData.projectId,
+        name: createFormData.name,
+        code: createFormData.code,
         isActive: true
+      }
+      if (createFormData.typeId) {
+        payload.typeId = createFormData.typeId
+      } else {
+        payload.type = createFormData.type.trim()
       }
 
       const res = await fetch("/api/operational-units", {
@@ -212,7 +240,7 @@ export default function OperationalUnitsPage() {
       })
 
       if (res.ok) {
-        setCreateFormData({ name: "", code: "", type: "", projectId: "" })
+        setCreateFormData({ name: "", code: "", type: "", typeId: "", projectId: "" })
         setOpenCreateDialog(false)
         fetchUnits()
         alert("Operational unit created successfully")
@@ -400,7 +428,7 @@ export default function OperationalUnitsPage() {
                     المشروع: <span className="text-gray-700 font-medium">{unit.project.name}</span>
                   </p>
                   <p className="text-xs text-gray-500">
-                    النوع: <span className="text-gray-700 font-medium">{unit.type}</span>
+                    النوع: <span className="text-gray-700 font-medium">{unit.unitType?.name ?? unit.type}</span>
                   </p>
                 </div>
 
@@ -488,13 +516,32 @@ export default function OperationalUnitsPage() {
 
               <div>
                 <Label htmlFor="type" className="text-gray-700">نوع الوحدة *</Label>
-                <Input
-                  id="type"
-                  value={createFormData.type}
-                  onChange={(e) => setCreateFormData({ ...createFormData, type: e.target.value })}
-                  placeholder="مثال: شقة، مكتب"
-                  className="bg-white border-gray-200"
-                />
+                {unitTypes.length > 0 ? (
+                  <Select
+                    value={createFormData.typeId}
+                    onValueChange={(value) => setCreateFormData({ ...createFormData, typeId: value, type: "" })}
+                  >
+                    <SelectTrigger className="bg-white border-gray-200">
+                      <SelectValue placeholder="اختر نوع الوحدة" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {unitTypes.map((ut) => (
+                        <SelectItem key={ut.id} value={ut.id}>{ut.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                ) : (
+                  <>
+                    <Input
+                      id="type"
+                      value={createFormData.type}
+                      onChange={(e) => setCreateFormData({ ...createFormData, type: e.target.value })}
+                      placeholder="مثال: شقة، مكتب (أو أضف أنواع وحدات من الإدارة)"
+                      className="bg-white border-gray-200"
+                    />
+                    <p className="text-xs text-gray-500 mt-1">يمكنك إضافة أنواع وحدات من لوحة الإدارة → أنواع الوحدات ثم الاختيار منها هنا.</p>
+                  </>
+                )}
               </div>
             </div>
             <DialogFooter>
@@ -508,7 +555,7 @@ export default function OperationalUnitsPage() {
               </Button>
               <Button
                 type="submit"
-                disabled={!createFormData.projectId || !createFormData.name || !createFormData.code || !createFormData.type}
+                disabled={!createFormData.projectId || !createFormData.name || !createFormData.code || !(createFormData.typeId || createFormData.type.trim())}
                 className="bg-[#2563EB] hover:bg-[#1D4ED8] text-white"
               >
                 إضافة الوحدة
