@@ -725,16 +725,16 @@ function buildInvoiceClause(field: string, operator: string, rawValue: string): 
       return createStringFilter((val, operatorToken) => {
         switch (operatorToken) {
           case "=":
-            return { unit: { projectId: val } }
+            return { OR: [{ unit: { projectId: val } }, { projectId: val }] }
           case "!=":
-            return { NOT: { unit: { projectId: val } } }
+            return { NOT: { OR: [{ unit: { projectId: val } }, { projectId: val }] } }
           case "IN": {
             const parsed = JSON.parse(val) as string[]
-            return { unit: { projectId: { in: parsed } } }
+            return { OR: [{ unit: { projectId: { in: parsed } } }, { projectId: { in: parsed } }] }
           }
           case "NOT IN": {
             const parsed = JSON.parse(val) as string[]
-            return { unit: { projectId: { notIn: parsed } } }
+            return { NOT: { OR: [{ unit: { projectId: { in: parsed } } }, { projectId: { in: parsed } }] } }
           }
           default:
             return null
@@ -742,7 +742,12 @@ function buildInvoiceClause(field: string, operator: string, rawValue: string): 
       }, true)
     case "projectname":
       return createStringFilter((val, operatorToken) => {
-        const base = { unit: { project: { name: { equals: val, mode: "insensitive" as const } } } }
+        const base = {
+          OR: [
+            { unit: { project: { name: { equals: val, mode: "insensitive" as const } } } },
+            { project: { name: { equals: val, mode: "insensitive" as const } } }
+          ]
+        }
         switch (operatorToken) {
           case "=":
             return base

@@ -35,20 +35,21 @@ interface Invoice {
   remainingBalance: number
   isPaid: boolean
   createdAt: string
-  unit: {
+  unit?: {
     id: string
     name: string
     code: string
-    project: {
-      id: string
-      name: string
-    }
-  }
+    project: { id: string; name: string }
+  } | null
+  project?: { id: string; name: string } | null
   expenses?: Array<{
     id: string
     description: string
     amount: number
     sourceType: string
+    date?: string | null
+    unitName?: string | null
+    unitCode?: string | null
   }>
 }
 
@@ -255,12 +256,14 @@ export default function InvoicesPage() {
                         {invoice.invoiceNumber}
                       </TableCell>
                       <TableCell>
-                        <div className="text-sm">{invoice.unit.project.name}</div>
+                        <div className="text-sm font-medium">
+                          {invoice.project?.name ?? invoice.unit?.project?.name ?? "—"}
+                        </div>
                         <div className="text-xs text-muted-foreground">
-                          {invoice.unit.code}
+                          {invoice.unit ? `${invoice.unit.code} · ${invoice.unit.name}` : "المشروع بالكامل"}
                         </div>
                       </TableCell>
-                      <TableCell>{invoice.unit.name}</TableCell>
+                      <TableCell>{invoice.unit ? invoice.unit.name : "—"}</TableCell>
                       <TableCell>
                         <Badge variant="outline">
                           {invoice.type === "MANAGEMENT_SERVICE"
@@ -322,15 +325,19 @@ export default function InvoicesPage() {
               <div className="grid grid-cols-2 gap-4 pb-4 border-b">
                 <div>
                   <p className="text-sm text-muted-foreground">المشروع</p>
-                  <p className="font-medium">{selectedInvoice.unit.project.name}</p>
+                  <p className="font-medium">
+                    {selectedInvoice.project?.name ?? selectedInvoice.unit?.project?.name ?? "—"}
+                  </p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">الوحدة</p>
-                  <p className="font-medium">{selectedInvoice.unit.name}</p>
+                  <p className="font-medium">
+                    {selectedInvoice.unit ? `${selectedInvoice.unit.name} (${selectedInvoice.unit.code})` : "فاتورة على المشروع بالكامل"}
+                  </p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">رقم الوحدة</p>
-                  <p className="font-medium">{selectedInvoice.unit.code}</p>
+                  <p className="font-medium">{selectedInvoice.unit?.code ?? "—"}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">نوع الفاتورة</p>
@@ -345,11 +352,13 @@ export default function InvoicesPage() {
               {/* Expenses Table */}
               {selectedInvoice.expenses && selectedInvoice.expenses.length > 0 && (
                 <div>
-                  <h3 className="font-semibold mb-3">المصاريف المرتبطة</h3>
+                  <h3 className="font-semibold mb-3">تفاصيل النفقات (حسب الوحدة والتاريخ)</h3>
                   <div className="overflow-x-auto border rounded-lg">
                     <Table>
                       <TableHeader className="bg-gray-50 dark:bg-gray-900">
                         <TableRow>
+                          <TableHead>الوحدة</TableHead>
+                          <TableHead>التاريخ</TableHead>
                           <TableHead>الوصف</TableHead>
                           <TableHead className="text-right">المبلغ</TableHead>
                           <TableHead className="text-right">النوع</TableHead>
@@ -358,6 +367,14 @@ export default function InvoicesPage() {
                       <TableBody>
                         {selectedInvoice.expenses.map((expense) => (
                           <TableRow key={expense.id}>
+                            <TableCell className="font-medium">
+                              {expense.unitName || expense.unitCode
+                                ? `${expense.unitName ?? ""} ${expense.unitCode ? `(${expense.unitCode})` : ""}`.trim() || "—"
+                                : "—"}
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {expense.date ? new Date(expense.date).toLocaleDateString("ar-EG") : "—"}
+                            </TableCell>
                             <TableCell className="font-medium">{expense.description}</TableCell>
                             <TableCell className="text-right font-medium">
                               {expense.amount.toLocaleString()} ج.م

@@ -367,11 +367,11 @@ export async function PATCH(req: NextRequest) {
       console.log("✓ Owner association found:", ownerAssociation.id)
     }
 
-    // Reuse existing open (unpaid) CLAIM invoice if one exists for this unit,
-    // otherwise create a new one.
+    // فاتورة مطالبة واحدة للمشروع: إعادة استخدام المفتوحة أو إنشاء جديدة
+    const projectId = note.unit.projectId
     let invoice = await prisma.invoice.findFirst({
       where: {
-        unitId: note.unitId,
+        projectId,
         type: "CLAIM",
         isPaid: false
       },
@@ -379,7 +379,6 @@ export async function PATCH(req: NextRequest) {
     })
 
     if (invoice) {
-      // Add the note amount to the existing open invoice
       console.log("♻️ Reusing existing open invoice:", { id: invoice.id, invoiceNumber: invoice.invoiceNumber })
       invoice = await prisma.invoice.update({
         where: { id: invoice.id },
@@ -390,15 +389,15 @@ export async function PATCH(req: NextRequest) {
       })
       console.log("✓ Invoice updated:", { id: invoice.id, newAmount: invoice.amount })
     } else {
-      // No open invoice — create a fresh one
-      const invoiceNumber = `CLM-${Date.now()}-${note.unit.code}`
+      const invoiceNumber = `CLM-${Date.now()}-${projectId.slice(0, 8)}`
       console.log("🔨 Creating new invoice:", invoiceNumber)
       invoice = await prisma.invoice.create({
         data: {
           invoiceNumber,
           type: "CLAIM",
-          unitId: note.unitId,
-          ownerAssociationId: ownerAssociation.id,
+          projectId,
+          unitId: null,
+          ownerAssociationId: null,
           amount: note.amount,
           remainingBalance: note.amount
         }

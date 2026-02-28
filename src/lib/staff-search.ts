@@ -35,6 +35,8 @@ type StaffSearchOptions = {
   projectId?: string | null
   limit?: number
   onlyWithPendingAdvances?: boolean
+  /** when true and projectId set, return all staff in project (query ignored) */
+  listAllInProject?: boolean
 }
 
 type StaffReferenceOptions = {
@@ -116,9 +118,37 @@ const staffInclude = {
 } satisfies Prisma.StaffInclude
 
 export async function searchStaffByName(options: StaffSearchOptions): Promise<StaffResolution> {
-  const { query, projectId, limit = 10, onlyWithPendingAdvances = false } = options
+  const { query, projectId, limit = 10, onlyWithPendingAdvances = false, listAllInProject = false } = options
   const normalizedQuery = normalizeNameValue(query)
   const tokens = tokenizeName(normalizedQuery)
+
+  if (listAllInProject && projectId) {
+    const whereClauses: Prisma.StaffWhereInput[] = [buildProjectFilter(projectId)]
+    if (onlyWithPendingAdvances) {
+      whereClauses.push({
+        advances: {
+          some: {
+            status: "PENDING"
+          }
+        }
+      })
+    }
+    const rawMatches = await db.staff.findMany({
+      where: whereClauses.length === 1 ? whereClauses[0] : { AND: whereClauses },
+      take: Math.min(limit * 3, 100),
+      include: staffInclude
+    })
+    const matches = rawMatches
+      .map((staff) => mapStaffToMatch(staff, staff.name))
+      .sort((a, b) => a.name.localeCompare(b.name))
+      .slice(0, limit)
+    return {
+      staff: null,
+      matches,
+      normalizedQuery: null,
+      tokens: []
+    }
+  }
 
   if (!normalizedQuery || tokens.length === 0) {
     return {

@@ -85,12 +85,15 @@ export async function POST(req: NextRequest) {
     }
 
     const body = await req.json()
-    const { technicianId, unitId } = body
+    const { technicianId, unitId, description } = body
 
     // Validation
     if (!technicianId || !unitId) {
       return NextResponse.json({ error: "technicianId and unitId are required" }, { status: 400 })
     }
+
+    const descriptionTrimmed =
+      typeof description === "string" && description.trim().length > 0 ? description.trim() : null
 
     // PROJECT_MANAGER: Verify unit is in assigned project
     if (session.user.role === "PROJECT_MANAGER") {
@@ -110,12 +113,13 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Create technician work with PENDING status (no amount or description yet)
+    // Create technician work with PENDING status (description optional, amount on complete)
     const work = await db.technicianWork.create({
       data: {
         technicianId,
         unitId,
-        status: "PENDING", // Initial state
+        description: descriptionTrimmed ?? undefined,
+        status: "PENDING",
         createdAt: new Date()
       },
       include: {

@@ -12,7 +12,9 @@ const normalizeInvoice = (invoice: any) => {
     ...expense,
     date: expense.date ?? expense.createdAt ?? null,
     createdAt: expense.createdAt ?? null,
-    sourceType: expense.sourceType ?? "UNIT_EXPENSE"
+    sourceType: expense.sourceType ?? "UNIT_EXPENSE",
+    unitName: expense.unit?.name ?? null,
+    unitCode: expense.unit?.code ?? null
   }))
 
   const operationalExpenses = (invoice.operationalExpenses ?? []).map((expense: any) => ({
@@ -21,7 +23,9 @@ const normalizeInvoice = (invoice: any) => {
     amount: expense.amount,
     sourceType: expense.sourceType,
     date: expense.recordedAt ?? expense.createdAt ?? null,
-    createdAt: expense.createdAt ?? null
+    createdAt: expense.createdAt ?? null,
+    unitName: expense.unit?.name ?? null,
+    unitCode: expense.unit?.code ?? null
   }))
 
   const mergedExpenses = [...unitExpenses, ...operationalExpenses].sort((a, b) => {
@@ -35,6 +39,7 @@ const normalizeInvoice = (invoice: any) => {
     expenses: _unitExpenses,
     payments: _payments,
     ownerAssociation: rawOwnerAssociation,
+    project: invoiceProject,
     ...rest
   } = invoice
 
@@ -57,6 +62,7 @@ const normalizeInvoice = (invoice: any) => {
 
   return {
     ...rest,
+    project: invoiceProject,
     expenses: mergedExpenses,
     payments: invoice.payments ?? [],
     ownerAssociation
@@ -85,6 +91,7 @@ export async function GET(
             project: true
           }
         },
+        project: true,
         ownerAssociation: {
           include: {
             contacts: {
@@ -99,7 +106,8 @@ export async function GET(
             amount: true,
             sourceType: true,
             date: true,
-            createdAt: true
+            createdAt: true,
+            unit: { select: { name: true, code: true } }
           }
         },
         operationalExpenses: {
@@ -109,7 +117,8 @@ export async function GET(
             amount: true,
             sourceType: true,
             recordedAt: true,
-            createdAt: true
+            createdAt: true,
+            unit: { select: { name: true, code: true } }
           }
         },
         payments: {
@@ -206,6 +215,7 @@ export async function PATCH(
               project: true
             }
           },
+          project: true,
           ownerAssociation: {
             include: {
               contacts: {
@@ -220,7 +230,8 @@ export async function PATCH(
               amount: true,
               sourceType: true,
               date: true,
-              createdAt: true
+              createdAt: true,
+              unit: { select: { name: true, code: true } }
             }
           },
           operationalExpenses: {
@@ -230,7 +241,8 @@ export async function PATCH(
               amount: true,
               sourceType: true,
               recordedAt: true,
-              createdAt: true
+              createdAt: true,
+              unit: { select: { name: true, code: true } }
             }
           },
           payments: {

@@ -21,7 +21,11 @@ const ALLOWED_ACTIONS = [
   "LIST_PROJECT_TICKETS",
   "LIST_PROJECT_UNITS",
   "LIST_UNIT_EXPENSES",
-  "GET_LAST_ELECTRICITY_TOPUP"
+  "GET_LAST_ELECTRICITY_TOPUP",
+  "CREATE_TECHNICIAN_WORK",
+  "LIST_TECHNICIAN_WORK",
+  "START_TECHNICIAN_WORK",
+  "COMPLETE_TECHNICIAN_WORK"
 ] as const
 
 type AllowedAction = (typeof ALLOWED_ACTIONS)[number]
@@ -70,6 +74,28 @@ type ActionMap = {
   GET_LAST_ELECTRICITY_TOPUP: {
     projectId: string
     unitCode?: string | null
+  }
+  CREATE_TECHNICIAN_WORK: {
+    projectId: string
+    unitCode: string
+    technicianQuery: string
+    description: string
+  }
+  LIST_TECHNICIAN_WORK: {
+    projectId: string
+    unitCode?: string | null
+    status?: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "ALL"
+    limit?: number | string
+  }
+  START_TECHNICIAN_WORK: {
+    projectId: string
+    unitCode: string
+  }
+  COMPLETE_TECHNICIAN_WORK: {
+    projectId: string
+    unitCode: string
+    amount: number | string
+    description: string
   }
 }
 
@@ -2207,13 +2233,446 @@ async function handleLastElectricityTopup(
   }
 }
 
+async function handleCreateTechnicianWork(
+  manager: ManagerRecord,
+  payload: ActionMap["CREATE_TECHNICIAN_WORK"]
+): Promise<HandlerResponse> {
+  const { projectId, unitCode, technicianQuery, description } = payload
+
+  if (!assertProjectAccess(manager, projectId)) {
+    return {
+      status: 403,
+      body: {
+        success: false,
+        error: "Project manager is not assigned to this project",
+        projectId,
+        humanReadable: { ar: "أنت غير مكلّف بهذا المشروع." }
+      }
+    }
+  }
+
+  const unit = await db.operationalUnit.findFirst({
+    where: { projectId, code: unitCode }
+  })
+  if (!unit) {
+    const units = await db.operationalUnit.findMany({
+      where: { projectId },
+      select: { code: true, name: true },
+      orderBy: { code: "asc" },
+      take: 10
+    })
+    return {
+      status: 404,
+      body: {
+        success: false,
+        error: "Unit not found",
+        projectId,
+        issues: { unitCode },
+        humanReadable: {
+          ar: units.length
+            ? `الوحدة ${unitCode} مش موجودة. المتاحة: ${units.map((u) => u.code).join("، ")}`
+            : `الوحدة ${unitCode} مش موجودة في المشروع.`
+        },
+        suggestions: units.length ? [{ title: "عرض الوحدات", prompt: "هات وحدات المشروع.", data: { projectId } }] : undefined
+      }
+    }
+  }
+
+  const queryTrimmed = String(technicianQuery ?? "").trim()
+  if (!queryTrimmed) {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        error: "technicianQuery is required",
+        humanReadable: { ar: "حدد اسم التقني أو جزء منه (مثلاً: أحمد، محمد)." }
+      }
+    }
+  }
+
+  const technicians = await db.technician.findMany({
+    where: { name: { contains: queryTrimmed, mode: "insensitive" } },
+    take: 10,
+    select: { id: true, name: true }
+  })
+
+  if (technicians.length === 0) {
+    return {
+      status: 404,
+      body: {
+        success: false,
+        error: "No technician matched",
+        issues: { technicianQuery: queryTrimmed },
+        humanReadable: { ar: `ملقتش تقني باسم أو جزء منه: "${queryTrimmed}". جرّب اسم تاني.` }
+      }
+    }
+  }
+
+  if (technicians.length > 1) {
+    return {
+      status: 409,
+      body: {
+        success: false,
+        error: "Multiple technicians matched",
+        issues: { matches: technicians.map((t) => ({ id: t.id, name: t.name })) },
+        humanReadable: {
+          ar: `لقيت أكثر من تقني: ${technicians.map((t) => t.name).join("، ")}. حدد الاسم بالكامل أو استخدم technicianId.`
+        },
+        suggestions: technicians.slice(0, 5).map((t) => ({
+          title: `اختر ${t.name}`,
+          prompt: `سجل العمل للتقني ${t.name}`,
+          data: { projectId, unitCode, technicianId: t.id, description }
+        }))
+      }
+    }
+  }
+
+  const technician = technicians[0]
+  const descriptionTrimmed = String(description ?? "").trim() || "عمل تقني"
+
+  const work = await db.technicianWork.create({
+    data: {
+      technicianId: technician.id,
+      unitId: unit.id,
+      description: descriptionTrimmed,
+      status: "PENDING"
+    },
+    include: {
+      technician: { select: { id: true, name: true } },
+      unit: { select: { id: true, code: true, name: true, project: { select: { name: true } } } }
+    }
+  })
+
+  return {
+    status: 201,
+    body: {
+      success: true,
+      projectId,
+      data: {
+        work: {
+          id: work.id,
+          description: work.description,
+          status: work.status,
+          technician: work.technician,
+          unit: work.unit
+        }
+      },
+      humanReadable: {
+        ar: `تم تسجيل عمل تقني للوحدة ${work.unit.code}: ${work.technician.name} — ${descriptionTrimmed}. الحالة: معلق. قل "ابدأ عمل وحدة ${work.unit.code}" عشان يبدأ.`
+      },
+      suggestions: [
+        {
+          title: "بدء العمل",
+          prompt: `ابدأ عمل وحدة ${work.unit.code}`,
+          data: { projectId, unitCode }
+        }
+      ]
+    }
+  }
+}
+
+async function handleListTechnicianWork(
+  manager: ManagerRecord,
+  payload: ActionMap["LIST_TECHNICIAN_WORK"]
+): Promise<HandlerResponse> {
+  const { projectId, unitCode, status, limit } = payload
+
+  if (!assertProjectAccess(manager, projectId)) {
+    return {
+      status: 403,
+      body: {
+        success: false,
+        error: "Project manager is not assigned to this project",
+        projectId,
+        humanReadable: { ar: "أنت غير مكلّف بهذا المشروع." }
+      }
+    }
+  }
+
+  const where: any = {
+    unit: { projectId }
+  }
+  if (unitCode) {
+    where.unit = { ...where.unit, code: unitCode }
+  }
+  if (status && status !== "ALL") {
+    where.status = status
+  }
+
+  const take = Math.min(parseLimit(limit, 15, 50), 50)
+  const works = await db.technicianWork.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    take,
+    include: {
+      technician: { select: { id: true, name: true } },
+      unit: { select: { id: true, code: true, name: true } }
+    }
+  })
+
+  const items = works.map((w) => ({
+    id: w.id,
+    description: w.description,
+    status: w.status,
+    amount: w.amount,
+    createdAt: w.createdAt,
+    startedAt: w.startedAt,
+    completedAt: w.completedAt,
+    technician: w.technician,
+    unit: w.unit
+  }))
+
+  const statusLabel =
+    status && status !== "ALL"
+      ? status === "PENDING"
+        ? "معلقة"
+        : status === "IN_PROGRESS"
+          ? "قيد العمل"
+          : "مكتملة"
+      : "الكل"
+  const unitLabel = unitCode ? ` للوحدة ${unitCode}` : ""
+
+  return {
+    status: 200,
+    body: {
+      success: true,
+      projectId,
+      data: {
+        works: items,
+        count: items.length
+      },
+      humanReadable: {
+        ar:
+          items.length === 0
+            ? `لا توجد أعمال تقني${unitLabel} بالحالة "${statusLabel}".`
+            : `عندك ${items.length} عمل تقني${unitLabel} (${statusLabel}): ${items.map((w) => `${w.unit.code} — ${w.technician.name} (${w.status})`).join("؛ ")}.`
+      }
+    }
+  }
+}
+
+async function handleStartTechnicianWork(
+  manager: ManagerRecord,
+  payload: ActionMap["START_TECHNICIAN_WORK"]
+): Promise<HandlerResponse> {
+  const { projectId, unitCode } = payload
+
+  if (!assertProjectAccess(manager, projectId)) {
+    return {
+      status: 403,
+      body: {
+        success: false,
+        error: "Project manager is not assigned to this project",
+        projectId,
+        humanReadable: { ar: "أنت غير مكلّف بهذا المشروع." }
+      }
+    }
+  }
+
+  const unit = await db.operationalUnit.findFirst({
+    where: { projectId, code: unitCode }
+  })
+  if (!unit) {
+    return {
+      status: 404,
+      body: {
+        success: false,
+        error: "Unit not found",
+        projectId,
+        issues: { unitCode },
+        humanReadable: { ar: `الوحدة ${unitCode} مش موجودة.` }
+      }
+    }
+  }
+
+  const pending = await db.technicianWork.findFirst({
+    where: { unitId: unit.id, status: "PENDING" },
+    orderBy: { createdAt: "asc" }
+  })
+
+  if (!pending) {
+    return {
+      status: 404,
+      body: {
+        success: false,
+        error: "No pending work for this unit",
+        projectId,
+        issues: { unitCode },
+        humanReadable: { ar: `مفيش عمل تقني معلق للوحدة ${unitCode}. سجّل عمل جديد أولاً.` }
+      }
+    }
+  }
+
+  const updated = await db.technicianWork.update({
+    where: { id: pending.id },
+    data: { status: "IN_PROGRESS", startedAt: new Date() },
+    include: {
+      technician: { select: { id: true, name: true } },
+      unit: { select: { id: true, code: true, name: true } }
+    }
+  })
+
+  return {
+    status: 200,
+    body: {
+      success: true,
+      projectId,
+      data: {
+        work: {
+          id: updated.id,
+          description: updated.description,
+          status: updated.status,
+          technician: updated.technician,
+          unit: updated.unit
+        }
+      },
+      humanReadable: {
+        ar: `تم بدء عمل التقني للوحدة ${updated.unit.code} (${updated.technician.name}). لما يخلص قل "كمل عمل وحدة ${updated.unit.code}" وحدد المبلغ والملاحظات.`
+      },
+      suggestions: [
+        {
+          title: "إكمال العمل",
+          prompt: `كمل عمل وحدة ${updated.unit.code}`,
+          data: { projectId, unitCode }
+        }
+      ]
+    }
+  }
+}
+
+async function handleCompleteTechnicianWork(
+  manager: ManagerRecord,
+  payload: ActionMap["COMPLETE_TECHNICIAN_WORK"]
+): Promise<HandlerResponse> {
+  const { projectId, unitCode, amount, description } = payload
+
+  if (!assertProjectAccess(manager, projectId)) {
+    return {
+      status: 403,
+      body: {
+        success: false,
+        error: "Project manager is not assigned to this project",
+        projectId,
+        humanReadable: { ar: "أنت غير مكلّف بهذا المشروع." }
+      }
+    }
+  }
+
+  const unit = await db.operationalUnit.findFirst({
+    where: { projectId, code: unitCode }
+  })
+  if (!unit) {
+    return {
+      status: 404,
+      body: {
+        success: false,
+        error: "Unit not found",
+        projectId,
+        issues: { unitCode },
+        humanReadable: { ar: `الوحدة ${unitCode} مش موجودة.` }
+      }
+    }
+  }
+
+  const inProgress = await db.technicianWork.findFirst({
+    where: { unitId: unit.id, status: "IN_PROGRESS" },
+    orderBy: { startedAt: "asc" }
+  })
+
+  if (!inProgress) {
+    return {
+      status: 404,
+      body: {
+        success: false,
+        error: "No work in progress for this unit",
+        projectId,
+        issues: { unitCode },
+        humanReadable: { ar: `مفيش عمل تقني قيد التنفيذ للوحدة ${unitCode}. ابدأ عمل أولاً.` }
+      }
+    }
+  }
+
+  const numericAmount = toNumericAmount(amount)
+  if (numericAmount <= 0) {
+    return {
+      status: 400,
+      body: {
+        success: false,
+        error: "Invalid amount",
+        humanReadable: { ar: "المبلغ لازم يكون رقم موجب." }
+      }
+    }
+  }
+
+  const descriptionTrimmed = String(description ?? "").trim() || "تم إكمال العمل"
+
+  const updated = await db.technicianWork.update({
+    where: { id: inProgress.id },
+    data: {
+      status: "COMPLETED",
+      amount: numericAmount,
+      description: descriptionTrimmed,
+      completedAt: new Date()
+    },
+    include: {
+      technician: { select: { id: true, name: true } },
+      unit: { include: { project: true } }
+    }
+  })
+
+  await db.technicianPayment.create({
+    data: {
+      technicianId: updated.technicianId,
+      amount: numericAmount,
+      notes: `${updated.unit.name} - ${descriptionTrimmed}`,
+      paidAt: new Date()
+    }
+  })
+
+  await db.accountingNote.create({
+    data: {
+      amount: numericAmount,
+      description: `عمل تقني بواسطة ${updated.technician.name}: ${descriptionTrimmed}`,
+      status: "PENDING",
+      unitId: updated.unitId,
+      projectId: updated.unit.projectId,
+      createdByUserId: manager.id
+    }
+  })
+
+  return {
+    status: 200,
+    body: {
+      success: true,
+      projectId,
+      data: {
+        work: {
+          id: updated.id,
+          description: updated.description,
+          status: updated.status,
+          amount: updated.amount,
+          technician: updated.technician,
+          unit: updated.unit
+        }
+      },
+      humanReadable: {
+        ar: `تم إكمال العمل. المبلغ ${formatCurrency(numericAmount)} جنيه — تم تسجيل الدفعة للتقني والمذكرة المحاسبية للوحدة.`
+      }
+    }
+  }
+}
+
 const actionHandlers: Record<AllowedAction, GenericActionHandler> = {
   CREATE_OPERATIONAL_EXPENSE: handleCreateOperationalExpense as GenericActionHandler,
   GET_RESIDENT_PHONE: handleResidentLookup as GenericActionHandler,
   LIST_PROJECT_TICKETS: handleTicketSummary as GenericActionHandler,
   LIST_PROJECT_UNITS: handleProjectUnitsList as GenericActionHandler,
   LIST_UNIT_EXPENSES: handleUnitExpensesList as GenericActionHandler,
-  GET_LAST_ELECTRICITY_TOPUP: handleLastElectricityTopup as GenericActionHandler
+  GET_LAST_ELECTRICITY_TOPUP: handleLastElectricityTopup as GenericActionHandler,
+  CREATE_TECHNICIAN_WORK: handleCreateTechnicianWork as GenericActionHandler,
+  LIST_TECHNICIAN_WORK: handleListTechnicianWork as GenericActionHandler,
+  START_TECHNICIAN_WORK: handleStartTechnicianWork as GenericActionHandler,
+  COMPLETE_TECHNICIAN_WORK: handleCompleteTechnicianWork as GenericActionHandler
 }
 
 const EVENT_TYPES: Record<
@@ -2224,13 +2683,21 @@ const EVENT_TYPES: Record<
   | "PM_PROJECT_UNITS_LISTED"
   | "PM_UNIT_EXPENSES_LISTED"
   | "PM_ELECTRICITY_TOPUP_LOOKUP"
+  | "PM_TECHNICIAN_WORK_CREATED"
+  | "PM_TECHNICIAN_WORK_LISTED"
+  | "PM_TECHNICIAN_WORK_STARTED"
+  | "PM_TECHNICIAN_WORK_COMPLETED"
 > = {
   CREATE_OPERATIONAL_EXPENSE: "PM_OPERATIONAL_EXPENSE_CREATED",
   GET_RESIDENT_PHONE: "PM_RESIDENT_LOOKUP",
   LIST_PROJECT_TICKETS: "PM_TICKETS_SUMMARY",
   LIST_PROJECT_UNITS: "PM_PROJECT_UNITS_LISTED",
   LIST_UNIT_EXPENSES: "PM_UNIT_EXPENSES_LISTED",
-  GET_LAST_ELECTRICITY_TOPUP: "PM_ELECTRICITY_TOPUP_LOOKUP"
+  GET_LAST_ELECTRICITY_TOPUP: "PM_ELECTRICITY_TOPUP_LOOKUP",
+  CREATE_TECHNICIAN_WORK: "PM_TECHNICIAN_WORK_CREATED",
+  LIST_TECHNICIAN_WORK: "PM_TECHNICIAN_WORK_LISTED",
+  START_TECHNICIAN_WORK: "PM_TECHNICIAN_WORK_STARTED",
+  COMPLETE_TECHNICIAN_WORK: "PM_TECHNICIAN_WORK_COMPLETED"
 }
 
 export async function POST(req: NextRequest) {

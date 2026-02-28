@@ -237,12 +237,13 @@ export async function GET(req: NextRequest) {
     // ========================================
     if (auth.context.role === "ACCOUNTANT") {
       if (queryType === "ACCOUNTING_DATA" || queryType === "DEFAULT") {
-        // Get all invoices, payments, and accounting data
+        // Get all invoices, payments, and accounting data (وحدة أو مشروع)
         const invoices = await db.invoice.findMany({
           include: {
             payments: true,
             ownerAssociation: true,
-            unit: true
+            unit: true,
+            project: true
           }
         })
 
@@ -308,8 +309,11 @@ export async function GET(req: NextRequest) {
               invoiceNumber: inv.invoiceNumber,
               type: inv.type,
               amount: inv.amount,
-              unit: inv.unit.code,
-              ownerAssociation: inv.ownerAssociation.name,
+              projectId: inv.projectId ?? inv.unit?.projectId ?? null,
+              projectName: inv.project?.name ?? inv.unit?.project?.name ?? null,
+              unit: inv.unit?.code ?? null,
+              unitName: inv.unit?.name ?? null,
+              ownerAssociation: inv.ownerAssociation?.name ?? null,
               totalPaid: inv.payments.reduce((s, p) => s + p.amount, 0),
               remainingBalance:
                 inv.amount -

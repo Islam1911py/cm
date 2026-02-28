@@ -117,9 +117,10 @@ export async function convertAccountingNote({
   const { invoice, expense, invoiceCreated } = await db.$transaction(async (tx) => {
     let invoiceCreatedFlag = false
 
+    const projectId = note.unit.projectId
     const openInvoices = await tx.invoice.findMany({
       where: {
-        unitId: note.unitId,
+        projectId,
         type: "CLAIM",
         remainingBalance: {
           gt: 0
@@ -194,28 +195,14 @@ export async function convertAccountingNote({
         }
       })
     } else {
-      let ownerAssociation = await tx.ownerAssociation.findFirst({
-        where: { unitId: note.unitId }
-      })
-
-      if (!ownerAssociation) {
-        ownerAssociation = await tx.ownerAssociation.create({
-          data: {
-            name: `Owner - ${note.unit.name}`,
-            unitId: note.unitId,
-            phone: "",
-            email: ""
-          }
-        })
-      }
-
-      const invoiceNumber = `CLM-${Date.now()}-${note.unit.code}`
+      const invoiceNumber = `CLM-${Date.now()}-${projectId.slice(0, 8)}`
       invoiceRecord = await tx.invoice.create({
         data: {
           invoiceNumber,
           type: "CLAIM",
-          unitId: note.unitId,
-          ownerAssociationId: ownerAssociation.id,
+          projectId,
+          unitId: null,
+          ownerAssociationId: null,
           amount: note.amount,
           remainingBalance: note.amount
         }

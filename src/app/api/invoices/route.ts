@@ -5,6 +5,60 @@ import { db } from "@/lib/db"
 
 const prisma = db as any
 
+/** إنشاء فاتورة خدمات شهرية واحدة لكل مشروع له وحدات يوم التحصيل فيها = يوم اليوم */
+async function ensureMonthlyServiceInvoicesForToday() {
+  const today = new Date()
+  const currentDay = today.getDate()
+  const currentMonth = today.toISOString().substring(0, 7)
+
+  const unitsToInvoice = await db.operationalUnit.findMany({
+    where: {
+      isActive: true,
+      monthlyBillingDay: currentDay
+    },
+    include: { project: true }
+  })
+
+  const byProject = new Map<string, { project: { id: string; name: string }; totalAmount: number }>()
+  for (const unit of unitsToInvoice) {
+    const fee = unit.monthlyManagementFee ?? 0
+    if (fee <= 0) continue
+    const pid = unit.projectId
+    if (!byProject.has(pid)) {
+      byProject.set(pid, { project: unit.project, totalAmount: 0 })
+    }
+    const entry = byProject.get(pid)!
+    entry.totalAmount += fee
+  }
+
+  for (const [, { project, totalAmount }] of byProject) {
+    const invoiceNumber = `MGT-${currentMonth}-${project.id.slice(0, 8)}`
+    const existing = await db.invoice.findFirst({
+      where: { projectId: project.id, invoiceNumber }
+    })
+    if (existing) continue
+
+    try {
+      await db.invoice.create({
+        data: {
+          invoiceNumber,
+          type: "MANAGEMENT_SERVICE",
+          amount: totalAmount,
+          projectId: project.id,
+          unitId: null,
+          ownerAssociationId: null,
+          issuedAt: today,
+          totalPaid: 0,
+          remainingBalance: totalAmount,
+          isPaid: false
+        }
+      })
+    } catch {
+      // تكرار أو خطأ — نتجاهل
+    }
+  }
+}
+
 // GET /api/invoices - List all invoices with their expenses
 export async function GET(req: NextRequest) {
   try {
@@ -20,6 +74,8 @@ export async function GET(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized: Insufficient permissions" }, { status: 403 })
     }
 
+    await ensureMonthlyServiceInvoicesForToday()
+
     const { searchParams } = new URL(req.url)
     const unitId = searchParams.get("unitId")
     const isPaidParam = searchParams.get("isPaid")
@@ -33,7 +89,7 @@ export async function GET(req: NextRequest) {
       where.isPaid = isPaidParam === "true"
     }
 
-    // Get all invoices with their associated data
+    // Get all invoices with their associated data (وحدة أو مشروع)
     const invoices = await prisma.invoice.findMany({
       where,
       include: {
@@ -42,6 +98,7 @@ export async function GET(req: NextRequest) {
             project: true
           }
         },
+        project: true,
         ownerAssociation: {
           include: {
             contacts: {
@@ -56,7 +113,9 @@ export async function GET(req: NextRequest) {
             amount: true,
             sourceType: true,
             date: true,
-            createdAt: true
+            createdAt: true,
+            unitId: true,
+            unit: { select: { name: true, code: true } }
           }
         },
         operationalExpenses: {
@@ -66,7 +125,9 @@ export async function GET(req: NextRequest) {
             amount: true,
             sourceType: true,
             recordedAt: true,
-            createdAt: true
+            createdAt: true,
+            unitId: true,
+            unit: { select: { name: true, code: true } }
           }
         },
         payments: {
@@ -82,20 +143,24 @@ export async function GET(req: NextRequest) {
     })
 
     const normalized = invoices.map((invoice) => {
-      const unitExpenses = (invoice.expenses ?? []).map((expense) => ({
+      const unitExpenses = (invoice.expenses ?? []).map((expense: any) => ({
         ...expense,
         date: expense.date ?? expense.createdAt ?? null,
         createdAt: expense.createdAt ?? null,
-        sourceType: expense.sourceType ?? "UNIT_EXPENSE"
+        sourceType: expense.sourceType ?? "UNIT_EXPENSE",
+        unitName: expense.unit?.name ?? null,
+        unitCode: expense.unit?.code ?? null
       }))
 
-      const operationalExpenses = (invoice.operationalExpenses ?? []).map((expense) => ({
+      const operationalExpenses = (invoice.operationalExpenses ?? []).map((expense: any) => ({
         id: expense.id,
         description: expense.description,
         amount: expense.amount,
         sourceType: expense.sourceType,
         date: expense.recordedAt ?? expense.createdAt ?? null,
-        createdAt: expense.createdAt ?? null
+        createdAt: expense.createdAt ?? null,
+        unitName: expense.unit?.name ?? null,
+        unitCode: expense.unit?.code ?? null
       }))
 
       const mergedExpenses = [...unitExpenses, ...operationalExpenses].sort((a, b) => {
@@ -109,6 +174,7 @@ export async function GET(req: NextRequest) {
         expenses: _unitExpenses,
         payments: _payments,
         ownerAssociation: rawOwnerAssociation,
+        project: invoiceProject,
         ...rest
       } = invoice
 
@@ -131,6 +197,7 @@ export async function GET(req: NextRequest) {
 
       return {
         ...rest,
+        project: invoiceProject,
         expenses: mergedExpenses,
         payments: invoice.payments ?? [],
         ownerAssociation

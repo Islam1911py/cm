@@ -36,6 +36,8 @@ interface Expense {
   amount: number
   sourceType?: string
   createdAt?: string | null
+  unitName?: string | null
+  unitCode?: string | null
 }
 
 type OwnerContactType = "PHONE" | "EMAIL"
@@ -65,15 +67,13 @@ interface Invoice {
   totalPaid: number
   remainingBalance: number
   isPaid: boolean
-  unit: {
+  unit?: {
     id: string
     name: string
     code: string
-    project: {
-      id: string
-      name: string
-    }
-  }
+    project: { id: string; name: string }
+  } | null
+  project?: { id: string; name: string } | null
   ownerAssociation: InvoiceOwnerAssociation | null
   payments: Payment[]
   expenses?: Expense[]
@@ -236,7 +236,9 @@ export default function InvoiceDetailPage() {
       const safe = (value: string) =>
         value.replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim()
 
-      const fileName = `${safe(invoice.unit.project.name)}-${safe(invoice.unit.name)}-${safe(invoice.invoiceNumber)}.pdf`
+      const projectName = invoice.project?.name ?? invoice.unit?.project?.name ?? "project"
+      const unitLabel = invoice.unit ? safe(invoice.unit.name) : "full-project"
+      const fileName = `${safe(projectName)}-${unitLabel}-${safe(invoice.invoiceNumber)}.pdf`
 
       const link = document.createElement("a")
       link.href = url
@@ -397,12 +399,16 @@ export default function InvoiceDetailPage() {
           <CardContent className="space-y-3">
             <div>
               <p className="text-sm text-gray-500">المشروع</p>
-              <p className="font-medium text-gray-900">{invoice.unit.project.name}</p>
+              <p className="font-medium text-gray-900">
+                {invoice.project?.name ?? invoice.unit?.project?.name ?? "—"}
+              </p>
             </div>
             <div>
               <p className="text-sm text-gray-500">الوحدة</p>
-              <p className="font-medium text-gray-900">{invoice.unit.name}</p>
-              <p className="text-xs text-gray-500">الكود: {invoice.unit.code}</p>
+              <p className="font-medium text-gray-900">
+                {invoice.unit ? `${invoice.unit.name} (${invoice.unit.code})` : "فاتورة على المشروع بالكامل"}
+              </p>
+              {invoice.unit && <p className="text-xs text-gray-500">الكود: {invoice.unit.code}</p>}
             </div>
           </CardContent>
         </Card>
@@ -457,7 +463,9 @@ export default function InvoiceDetailPage() {
                 )}
               </>
             ) : (
-              <p className="text-sm text-gray-500">لا توجد بيانات لجهة المالك المرتبطة بهذه الوحدة.</p>
+              <p className="text-sm text-gray-500">
+                {invoice.project ? "فاتورة باسم المشروع — لا يوجد مالك مفرد مرتبط." : "لا توجد بيانات لجهة المالك المرتبطة بهذه الوحدة."}
+              </p>
             )}
           </CardContent>
         </Card>
@@ -488,6 +496,7 @@ export default function InvoiceDetailPage() {
               <Table>
                 <TableHeader>
                   <TableRow>
+                    <TableHead>الوحدة</TableHead>
                     <TableHead>التاريخ</TableHead>
                     <TableHead>الوصف</TableHead>
                     <TableHead>المصدر</TableHead>
@@ -497,6 +506,9 @@ export default function InvoiceDetailPage() {
                 <TableBody>
                   {invoice.expenses.map((expense) => (
                     <TableRow key={expense.id}>
+                      <TableCell className="text-sm text-gray-700">
+                        {expense.unitName ?? expense.unitCode ?? "—"}
+                      </TableCell>
                       <TableCell className="text-sm">
                         {expense.date ? format(new Date(expense.date), "dd MMM yyyy") : "-"}
                       </TableCell>
@@ -508,7 +520,7 @@ export default function InvoiceDetailPage() {
                     </TableRow>
                   ))}
                   <TableRow className="bg-[#F9FAFB] font-semibold">
-                    <TableCell colSpan={3} className="text-right">الإجمالي:</TableCell>
+                    <TableCell colSpan={4} className="text-right">الإجمالي:</TableCell>
                     <TableCell className="text-right text-gray-900">
                       {invoice.expenses.reduce((sum, exp) => sum + exp.amount, 0).toLocaleString()} ج.م
                     </TableCell>
@@ -628,18 +640,30 @@ export default function InvoiceDetailPage() {
           </CardHeader>
           <CardContent>
             <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => router.push(`/dashboard/operational-units/${invoice.unit.id}`)}
-                className="text-sm px-3 py-2 bg-[#F3F4F6] hover:bg-[#E5E7EB] text-[#111827] border border-[#E5E7EB] rounded-md font-medium transition-colors"
-              >
-                تفاصيل الوحدة
-              </button>
-              <button
-                onClick={() => router.push(`/dashboard/payments?unit=${invoice.unit.id}`)}
-                className="text-sm px-3 py-2 bg-[#F3F4F6] hover:bg-[#E5E7EB] text-[#111827] border border-[#E5E7EB] rounded-md font-medium transition-colors"
-              >
-                مدفوعات الوحدة
-              </button>
+              {invoice.unit && (
+                <>
+                  <button
+                    onClick={() => router.push(`/dashboard/operational-units/${invoice.unit!.id}`)}
+                    className="text-sm px-3 py-2 bg-[#F3F4F6] hover:bg-[#E5E7EB] text-[#111827] border border-[#E5E7EB] rounded-md font-medium transition-colors"
+                  >
+                    تفاصيل الوحدة
+                  </button>
+                  <button
+                    onClick={() => router.push(`/dashboard/payments?unit=${invoice.unit!.id}`)}
+                    className="text-sm px-3 py-2 bg-[#F3F4F6] hover:bg-[#E5E7EB] text-[#111827] border border-[#E5E7EB] rounded-md font-medium transition-colors"
+                  >
+                    مدفوعات الوحدة
+                  </button>
+                </>
+              )}
+              {invoice.project && (
+                <button
+                  onClick={() => router.push(`/dashboard/projects/${invoice.project!.id}`)}
+                  className="text-sm px-3 py-2 bg-[#F3F4F6] hover:bg-[#E5E7EB] text-[#111827] border border-[#E5E7EB] rounded-md font-medium transition-colors"
+                >
+                  تفاصيل المشروع
+                </button>
+              )}
               <button
                 onClick={() => router.push("/dashboard/invoices")}
                 className="text-sm px-3 py-2 bg-[#F3F4F6] hover:bg-[#E5E7EB] text-[#111827] border border-[#E5E7EB] rounded-md font-medium transition-colors"

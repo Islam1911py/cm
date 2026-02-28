@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useSession } from "next-auth/react"
-import { FileText, DollarSign, Check, AlertCircle, PlusCircle } from "lucide-react"
+import { FileText, DollarSign, Check } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
@@ -35,7 +35,7 @@ interface Invoice {
   remainingBalance: number
   isPaid: boolean
   createdAt: string
-  unit: {
+  unit?: {
     id: string
     name: string
     code: string
@@ -43,12 +43,16 @@ interface Invoice {
       id: string
       name: string
     }
-  }
+  } | null
+  project?: { id: string; name: string } | null
   expenses?: Array<{
     id: string
     description: string
     amount: number
     sourceType: string
+    date?: string | null
+    unitName?: string | null
+    unitCode?: string | null
   }>
 }
 
@@ -62,17 +66,8 @@ export default function InvoicesPage() {
   const [paying, setPaying] = useState(false)
   const [filter, setFilter] = useState<"all" | "open" | "paid" | "partial">("open")
 
-  // States الإصدار الجماعي المعدلة
-  const [showGenerateDialog, setShowGenerateDialog] = useState(false)
-  const [genAmount, setGenAmount] = useState("")
-  const [genDay, setGenDay] = useState(new Date().getDate().toString())
-  const [generating, setGenerating] = useState(false)
-  const [projects, setProjects] = useState<any[]>([]) 
-  const [selectedProjectId, setSelectedProjectId] = useState("")
-
   useEffect(() => {
     fetchInvoices()
-    fetchProjects() // جلب المشاريع عند تحميل الصفحة
   }, [])
 
   const fetchInvoices = async () => {
@@ -87,54 +82,6 @@ export default function InvoicesPage() {
       console.error("Error fetching invoices:", error)
     } finally {
       setLoading(false)
-    }
-  }
-
-  const fetchProjects = async () => {
-    try {
-      const response = await fetch("/api/projects")
-      if (response.ok) {
-        const data = await response.json()
-        setProjects(data)
-      }
-    } catch (error) {
-      console.error("Error fetching projects:", error)
-    }
-  }
-
-  // الفانكشن المعدلة للإصدار الجماعي بناءً على المشروع
-  const handleGenerateInvoices = async () => {
-    if (!selectedProjectId) {
-      alert("يا أستاذ، لازم تختار المشروع الأول")
-      return
-    }
-
-    try {
-      setGenerating(true)
-      const response = await fetch("/api/invoices/generate-monthly", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          projectId: selectedProjectId,
-          customAmount: genAmount ? parseFloat(genAmount) : null,
-          customDay: parseInt(genDay)
-        })
-      })
-
-      if (response.ok) {
-        const result = await response.json()
-        alert(`تم بنجاح إصدار ${result.summary.invoicesCreated} فاتورة للمشروع.`)
-        setShowGenerateDialog(false)
-        fetchInvoices()
-      } else {
-        const error = await response.json()
-        alert(error.error || "فشل إصدار الفواتير")
-      }
-    } catch (error) {
-      console.error("Error generating invoices:", error)
-      alert("حدث خطأ أثناء إصدار الفواتير")
-    } finally {
-      setGenerating(false)
     }
   }
 
@@ -190,20 +137,11 @@ export default function InvoicesPage() {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
-        <div>
-          <h1 className="text-3xl font-bold">إدارة الفواتير</h1>
-          <p className="text-muted-foreground">
-            عرض وإدارة جميع الفواتير
-          </p>
-        </div>
-        <Button 
-          onClick={() => setShowGenerateDialog(true)}
-          className="bg-blue-600 hover:bg-blue-700 text-white"
-        >
-          <PlusCircle className="ml-2 h-4 w-4" />
-          إصدار فواتير الشهر
-        </Button>
+      <div>
+        <h1 className="text-3xl font-bold">إدارة الفواتير</h1>
+        <p className="text-muted-foreground">
+          عرض وإدارة جميع الفواتير (خدمات ومطالبات). فواتير الخدمات تظهر تلقائياً في يوم التحصيل المحدد للوحدة.
+        </p>
       </div>
 
       {/* Summary Cards */}
@@ -321,12 +259,16 @@ export default function InvoicesPage() {
                         {invoice.invoiceNumber}
                       </TableCell>
                       <TableCell>
-                        <div className="text-sm">{invoice.unit.project.name}</div>
+                        <div className="text-sm font-medium">
+                          {invoice.project?.name ?? invoice.unit?.project?.name ?? "—"}
+                        </div>
                         <div className="text-xs text-muted-foreground">
-                          {invoice.unit.code}
+                          {invoice.unit ? `${invoice.unit.code} · ${invoice.unit.name}` : "المشروع بالكامل"}
                         </div>
                       </TableCell>
-                      <TableCell>{invoice.unit.name}</TableCell>
+                      <TableCell>
+                        {invoice.unit ? invoice.unit.name : "—"}
+                      </TableCell>
                       <TableCell>
                         <Badge variant="outline">
                           {invoice.type === "MANAGEMENT_SERVICE"
@@ -372,74 +314,6 @@ export default function InvoicesPage() {
         </CardContent>
       </Card>
 
-      {/* --- Dialog إصدار الفواتير الجماعي (المعدل) --- */}
-      <Dialog open={showGenerateDialog} onOpenChange={setShowGenerateDialog}>
-        <DialogContent className="sm:max-w-[425px]">
-          <DialogHeader>
-            <DialogTitle>إصدار فواتير الخدمات الشهرية</DialogTitle>
-            <DialogDescription>
-              اختر المشروع لإصدار فواتير لجميع وحداته المفعلة.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="grid gap-4 py-4">
-            {/* اختيار المشروع */}
-            <div className="space-y-2">
-              <Label htmlFor="projectSelect">المشروع</Label>
-              <select
-                id="projectSelect"
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
-                value={selectedProjectId}
-                onChange={(e) => setSelectedProjectId(e.target.value)}
-                disabled={generating}
-              >
-                <option value="">-- اختر المشروع --</option>
-                {projects.map((proj) => (
-                  <option key={proj.id} value={proj.id}>
-                    {proj.name}
-                  </option>
-                ))}
-              </select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="genAmount">المبلغ (اختياري)</Label>
-              <Input
-                id="genAmount"
-                type="number"
-                placeholder="اتركه فارغاً لاستخدام مبلغ الوحدة"
-                value={genAmount}
-                onChange={(e) => setGenAmount(e.target.value)}
-                disabled={generating}
-              />
-            </div>
-            <div className="space-y-2">
-              <Label htmlFor="genDay">يوم الاستحقاق في الشهر</Label>
-              <Input
-                id="genDay"
-                type="number"
-                min="1"
-                max="31"
-                value={genDay}
-                onChange={(e) => setGenDay(e.target.value)}
-                disabled={generating}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowGenerateDialog(false)} disabled={generating}>
-              إلغاء
-            </Button>
-            <Button 
-              onClick={handleGenerateInvoices} 
-              disabled={generating || !selectedProjectId}
-              className="bg-green-600 hover:bg-green-700 text-white"
-            >
-              {generating ? "جاري الإصدار..." : "تأكيد وإصدار الفواتير"}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
       {/* Invoice Details Dialog */}
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
@@ -455,15 +329,19 @@ export default function InvoicesPage() {
               <div className="grid grid-cols-2 gap-4 pb-4 border-b">
                 <div>
                   <p className="text-sm text-muted-foreground">المشروع</p>
-                  <p className="font-medium">{selectedInvoice.unit.project.name}</p>
+                  <p className="font-medium">
+                    {selectedInvoice.project?.name ?? selectedInvoice.unit?.project?.name ?? "—"}
+                  </p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">الوحدة</p>
-                  <p className="font-medium">{selectedInvoice.unit.name}</p>
+                  <p className="font-medium">
+                    {selectedInvoice.unit ? `${selectedInvoice.unit.name} (${selectedInvoice.unit.code})` : "فاتورة على المشروع بالكامل"}
+                  </p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">رقم الوحدة</p>
-                  <p className="font-medium">{selectedInvoice.unit.code}</p>
+                  <p className="font-medium">{selectedInvoice.unit?.code ?? "—"}</p>
                 </div>
                 <div>
                   <p className="text-sm text-muted-foreground">نوع الفاتورة</p>
@@ -477,11 +355,13 @@ export default function InvoicesPage() {
 
               {selectedInvoice.expenses && selectedInvoice.expenses.length > 0 && (
                 <div>
-                  <h3 className="font-semibold mb-3">المصاريف المرتبطة</h3>
+                  <h3 className="font-semibold mb-3">تفاصيل النفقات (حسب الوحدة والتاريخ)</h3>
                   <div className="overflow-x-auto border rounded-lg">
                     <Table>
                       <TableHeader className="bg-gray-50 dark:bg-gray-900">
                         <TableRow>
+                          <TableHead>الوحدة</TableHead>
+                          <TableHead>التاريخ</TableHead>
                           <TableHead>الوصف</TableHead>
                           <TableHead className="text-right">المبلغ</TableHead>
                           <TableHead className="text-right">النوع</TableHead>
@@ -490,6 +370,16 @@ export default function InvoicesPage() {
                       <TableBody>
                         {selectedInvoice.expenses.map((expense) => (
                           <TableRow key={expense.id}>
+                            <TableCell className="font-medium">
+                              {expense.unitName || expense.unitCode
+                                ? `${expense.unitName ?? ""} ${expense.unitCode ? `(${expense.unitCode})` : ""}`.trim() || "—"
+                                : "—"}
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">
+                              {expense.date
+                                ? new Date(expense.date).toLocaleDateString("ar-EG")
+                                : "—"}
+                            </TableCell>
                             <TableCell className="font-medium">{expense.description}</TableCell>
                             <TableCell className="text-right font-medium">
                               {expense.amount.toLocaleString()} ج.م

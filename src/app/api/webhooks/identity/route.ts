@@ -34,6 +34,7 @@ type ContactResult =
     }
   | {
       type: "RESIDENT"
+      role: "RESIDENT"
       id: string
       name: string | null
       phone: string | null
@@ -48,24 +49,33 @@ type ContactResult =
         } | null
       }
     }
+  | {
+      type: "UNREGISTERED"
+      role: "UNREGISTERED"
+      phone: string
+    }
 
 type ResponseBody = {
   success: boolean
   input: string
-  contact: ContactResult | null
+  contact: ContactResult
   matchScore: number
   humanReadable?: HumanReadable
   suggestions?: Suggestion[]
 }
 
-function buildUnknownResponse(input: string): ResponseBody {
+function buildUnregisteredResponse(input: string): ResponseBody {
   return {
     success: false,
     input,
-    contact: null,
+    contact: {
+      type: "UNREGISTERED",
+      role: "UNREGISTERED",
+      phone: input
+    },
     matchScore: 0,
     humanReadable: {
-      ar: `لم يتم العثور على جهة اتصال للرقم ${input}.`
+      ar: "رقم غير مسجل."
     },
     suggestions: [
       {
@@ -231,6 +241,7 @@ export async function POST(req: NextRequest) {
       if (residentMatch) {
         const contact: ContactResult = {
           type: "RESIDENT",
+          role: "RESIDENT",
           id: residentMatch.id,
           name: residentMatch.name,
           phone: residentMatch.phone,
@@ -263,7 +274,7 @@ export async function POST(req: NextRequest) {
           ]
         }
       } else {
-        responseBody = buildUnknownResponse(input)
+        responseBody = buildUnregisteredResponse(input)
       }
     }
 
@@ -272,14 +283,14 @@ export async function POST(req: NextRequest) {
       "CONTACT_IDENTIFIED",
       "/api/webhooks/identity",
       "POST",
-      responseBody.success ? 200 : 404,
+      200,
       body,
       responseBody,
-      responseBody.success ? undefined : "Contact not found",
+      responseBody.contact.role === "UNREGISTERED" ? "Unregistered number" : undefined,
       ipAddress
     )
 
-    return NextResponse.json(responseBody, { status: responseBody.success ? 200 : 404 })
+    return NextResponse.json(responseBody, { status: 200 })
   } catch (error) {
     console.error("CONTACT_IDENTIFY_ERROR", error)
 

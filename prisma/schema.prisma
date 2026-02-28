@@ -73,6 +73,7 @@ model Project {
   projectAssignments   ProjectAssignment[]
   projectElements      ProjectElement[]
   staffAssignments     StaffProjectAssignment[]
+  invoices             Invoice[]
 }
 
 model ProjectAssignment {
@@ -310,20 +311,23 @@ model Invoice {
   invoiceNumber       String
   type                InvoiceType
   amount              Float
-  ownerAssociationId  String
-  unitId              String
+  ownerAssociationId  String?
+  unitId              String?
+  projectId           String?
   issuedAt            DateTime             @default(now())
   totalPaid           Float                @default(0)
   remainingBalance    Float                @default(0)
   isPaid              Boolean              @default(false)
   dueDate             DateTime?
-  ownerAssociation    OwnerAssociation     @relation(fields: [ownerAssociationId], references: [id])
-  unit                OperationalUnit      @relation(fields: [unitId], references: [id])
+  ownerAssociation    OwnerAssociation?    @relation(fields: [ownerAssociationId], references: [id])
+  unit                OperationalUnit?     @relation(fields: [unitId], references: [id])
+  project             Project?             @relation(fields: [projectId], references: [id])
   operationalExpenses OperationalExpense[] @relation("OperationalExpensesClaim")
   payments            Payment[]
   expenses            UnitExpense[]        @relation("ClaimInvoiceExpenses")
 
   @@unique([unitId, invoiceNumber])
+  @@unique([projectId, invoiceNumber])
 }
 
 model Payment {

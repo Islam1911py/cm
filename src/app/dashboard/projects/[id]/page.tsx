@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from "react"
 import { useSession } from "next-auth/react"
 import { useRouter, useParams } from "next/navigation"
-import { AlertCircle, ArrowRight, Loader, Users, Ticket, HardHat, Building2 } from "lucide-react"
+import { AlertCircle, ArrowRight, Loader, Users, Ticket, HardHat, Building2, Pencil, Trash2 } from "lucide-react"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
@@ -14,8 +14,19 @@ import {
   DialogContent,
   DialogDescription,
   DialogHeader,
-  DialogTitle
+  DialogTitle,
+  DialogFooter
 } from "@/components/ui/dialog"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle
+} from "@/components/ui/alert-dialog"
 import { ScrollArea } from "@/components/ui/scroll-area"
 
 interface UnitTicket {
@@ -130,6 +141,12 @@ export default function ProjectDetailsPage() {
   const [error, setError] = useState<string | null>(null)
   const [detailsView, setDetailsView] = useState<DetailsView | null>(null)
   const [sectionSearch, setSectionSearch] = useState("")
+  const [editOpen, setEditOpen] = useState(false)
+  const [editName, setEditName] = useState("")
+  const [editSaving, setEditSaving] = useState(false)
+  const [deleteOpen, setDeleteOpen] = useState(false)
+  const [deleteLoading, setDeleteLoading] = useState(false)
+  const [deleteError, setDeleteError] = useState<string | null>(null)
 
   const isAdmin = session?.user?.role === "ADMIN"
   const canViewFinancialDetails =
@@ -164,6 +181,55 @@ export default function ProjectDetailsPage() {
   const closeDetailsView = () => {
     setDetailsView(null)
     setSectionSearch("")
+  }
+
+  const openEditDialog = () => {
+    if (project) {
+      setEditName(project.name)
+      setEditOpen(true)
+    }
+  }
+
+  const saveProjectEdit = async () => {
+    if (!project || !editName.trim()) return
+    setEditSaving(true)
+    try {
+      const res = await fetch(`/api/projects/${project.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: editName.trim() }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || "فشل التحديث")
+      }
+      const updated = await res.json()
+      setProject((prev) => (prev ? { ...prev, name: updated.name } : null))
+      setEditOpen(false)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "فشل تحديث المشروع")
+    } finally {
+      setEditSaving(false)
+    }
+  }
+
+  const confirmDeleteProject = async () => {
+    if (!project) return
+    setDeleteError(null)
+    setDeleteLoading(true)
+    try {
+      const res = await fetch(`/api/projects/${project.id}`, { method: "DELETE" })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        throw new Error(data.error || "فشل الحذف")
+      }
+      setDeleteOpen(false)
+      router.push("/dashboard/projects")
+    } catch (err) {
+      setDeleteError(err instanceof Error ? err.message : "فشل حذف المشروع")
+    } finally {
+      setDeleteLoading(false)
+    }
   }
 
   useEffect(() => {
@@ -300,14 +366,34 @@ export default function ProjectDetailsPage() {
             تاريخ الإنشاء: {new Date(project.createdAt).toLocaleDateString("ar-EG")}
           </p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           {isAdmin && (
-            <Button
-              onClick={() => router.push(`/dashboard/operational-units?projectId=${project.id}`)}
-              className="bg-[#2563EB] hover:bg-[#1D4ED8] text-white"
-            >
-              إضافة وحدة
-            </Button>
+            <>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-gray-300 text-gray-700"
+                onClick={openEditDialog}
+              >
+                <Pencil className="h-4 w-4 ml-2" />
+                تعديل المشروع
+              </Button>
+              <Button
+                variant="outline"
+                size="sm"
+                className="border-red-200 text-red-600 hover:bg-red-50 hover:border-red-300"
+                onClick={() => setDeleteOpen(true)}
+              >
+                <Trash2 className="h-4 w-4 ml-2" />
+                حذف المشروع
+              </Button>
+              <Button
+                onClick={() => router.push(`/dashboard/operational-units?projectId=${project.id}`)}
+                className="bg-[#2563EB] hover:bg-[#1D4ED8] text-white"
+              >
+                إضافة وحدة
+              </Button>
+            </>
           )}
           {project.isActive && (
             <Badge className="bg-[#ECFDF5] border border-[#16A34A]/20 text-[#16A34A]">
@@ -316,6 +402,60 @@ export default function ProjectDetailsPage() {
           )}
         </div>
       </div>
+
+      {/* تعديل اسم المشروع */}
+      <Dialog open={editOpen} onOpenChange={setEditOpen}>
+        <DialogContent className="sm:max-w-md">
+          <DialogHeader>
+            <DialogTitle>تعديل المشروع</DialogTitle>
+            <DialogDescription>غيّر اسم المشروع ثم احفظ.</DialogDescription>
+          </DialogHeader>
+          <div className="grid gap-4 py-4">
+            <div className="grid gap-2">
+              <label className="text-sm font-medium text-gray-700">اسم المشروع</label>
+              <Input
+                value={editName}
+                onChange={(e) => setEditName(e.target.value)}
+                placeholder="اسم المشروع"
+                className="border-gray-300"
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setEditOpen(false)} disabled={editSaving}>
+              إلغاء
+            </Button>
+            <Button onClick={saveProjectEdit} disabled={editSaving || !editName.trim()}>
+              {editSaving ? "جاري الحفظ..." : "حفظ"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* تأكيد حذف المشروع */}
+      <AlertDialog open={deleteOpen} onOpenChange={(open) => { setDeleteOpen(open); if (!open) setDeleteError(null) }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>حذف المشروع</AlertDialogTitle>
+            <AlertDialogDescription>
+              هل أنت متأكد من حذف المشروع &quot;{project.name}&quot;؟ لا يمكن التراجع. يمكن حذف المشروع فقط إذا لم يكن فيه وحدات تشغيلية.
+            </AlertDialogDescription>
+            {deleteError && (
+              <p className="text-red-600 text-sm font-medium">{deleteError}</p>
+            )}
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleteLoading}>إلغاء</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => { e.preventDefault(); confirmDeleteProject() }}
+              disabled={deleteLoading}
+              className="bg-red-600 hover:bg-red-700"
+            >
+              {deleteLoading ? "جاري الحذف..." : "حذف"}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-8">
         <Card className="border-[#E5E7EB]">

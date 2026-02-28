@@ -1072,14 +1072,15 @@ async function handleSearchStaff(
 ): Promise<HandlerResponse> {
   const { query, projectId, limit, onlyWithPendingAdvances } = payload
 
-  if (!query || !String(query).trim()) {
+  const trimmedQuery = typeof query === "string" ? query.trim() : ""
+  if (!trimmedQuery && !projectId) {
     return {
       status: 400,
       body: {
         success: false,
-        error: "Search query is required",
+        error: "Search query or projectId is required",
         humanReadable: {
-          ar: "أرسل اسم أو جزء من اسم للبحث عن الموظفين."
+          ar: "أرسل اسم أو جزء من اسم للبحث، أو حدد المشروع (projectId) لجرد كل الموظفين فيه."
         }
       }
     }
@@ -1087,10 +1088,11 @@ async function handleSearchStaff(
 
   const resolvedLimit = parseLimit(limit, 10, 50)
   const searchResult = await searchStaffByName({
-    query,
+    query: trimmedQuery,
     projectId: projectId ?? undefined,
     limit: resolvedLimit,
-    onlyWithPendingAdvances: Boolean(onlyWithPendingAdvances)
+    onlyWithPendingAdvances: Boolean(onlyWithPendingAdvances),
+    listAllInProject: Boolean(projectId && !trimmedQuery)
   })
 
   const matches = searchResult.matches.map((match) => buildStaffMatchPayload(match))
@@ -3349,7 +3351,10 @@ async function handleListInvoices(
 
   if (project) {
     whereClauses.push({
-      unit: { projectId: project.id }
+      OR: [
+        { unit: { projectId: project.id } },
+        { projectId: project.id }
+      ]
     })
   }
 
@@ -3379,7 +3384,9 @@ async function handleListInvoices(
       OR: [
         { invoiceNumber: { contains: normalizedSearch, mode: "insensitive" } as any },
         { unit: { code: { contains: normalizedSearch, mode: "insensitive" } as any } },
-        { ownerAssociation: { name: { contains: normalizedSearch, mode: "insensitive" } as any } }
+        { unit: { name: { contains: normalizedSearch, mode: "insensitive" } as any } },
+        { ownerAssociation: { name: { contains: normalizedSearch, mode: "insensitive" } as any } },
+        { project: { name: { contains: normalizedSearch, mode: "insensitive" } as any } }
       ]
     })
   }
@@ -3406,6 +3413,9 @@ async function handleListInvoices(
           }
         }
       },
+      project: {
+        select: { id: true, name: true }
+      },
       ownerAssociation: {
         select: {
           id: true,
@@ -3431,8 +3441,8 @@ async function handleListInvoices(
     type: inv.type,
     unitCode: inv.unit?.code ?? null,
     unitName: inv.unit?.name ?? null,
-    projectId: inv.unit?.project?.id ?? null,
-    projectName: inv.unit?.project?.name ?? null,
+    projectId: inv.projectId ?? inv.unit?.project?.id ?? null,
+    projectName: inv.project?.name ?? inv.unit?.project?.name ?? null,
     amount: inv.amount,
     totalPaid: inv.totalPaid,
     remainingBalance: inv.remainingBalance,
@@ -3509,7 +3519,13 @@ async function handleGetInvoiceDetails(
     where = { id: invoiceId }
   } else {
     where = projectId
-      ? { invoiceNumber: invoiceNumber!, unit: { projectId } }
+      ? {
+          invoiceNumber: invoiceNumber!,
+          OR: [
+            { unit: { projectId } },
+            { projectId }
+          ]
+        }
       : { invoiceNumber: invoiceNumber! }
   }
 
@@ -3524,6 +3540,7 @@ async function handleGetInvoiceDetails(
           project: { select: { id: true, name: true } }
         }
       },
+      project: { select: { id: true, name: true } },
       ownerAssociation: {
         include: {
           contacts: { orderBy: { createdAt: "asc" } }
@@ -3536,6 +3553,7 @@ async function handleGetInvoiceDetails(
           amount: true,
           sourceType: true,
           recordedAt: true,
+          unit: { select: { code: true, name: true } },
           recordedByUser: { select: { id: true, name: true } },
           pmAdvance: {
             select: {
@@ -3553,6 +3571,7 @@ async function handleGetInvoiceDetails(
           amount: true,
           sourceType: true,
           date: true,
+          unit: { select: { code: true, name: true } },
           recordedByUser: { select: { id: true, name: true } }
         },
         orderBy: { date: "desc" }
@@ -3581,23 +3600,27 @@ async function handleGetInvoiceDetails(
   const primaryEmail = ownerContacts.find((c: any) => c.type === "EMAIL" && c.isPrimary)?.value ?? null
 
   const allExpenses = [
-    ...(invoice.operationalExpenses ?? []).map((e) => ({
+    ...(invoice.operationalExpenses ?? []).map((e: any) => ({
       id: e.id,
       description: e.description,
       amount: e.amount,
       sourceType: e.sourceType,
       date: e.recordedAt,
-      recordedBy: (e.recordedByUser as any)?.name ?? null,
-      kind: "OPERATIONAL"
+      recordedBy: e.recordedByUser?.name ?? null,
+      kind: "OPERATIONAL",
+      unitCode: e.unit?.code ?? null,
+      unitName: e.unit?.name ?? null
     })),
-    ...(invoice.expenses ?? []).map((e) => ({
+    ...(invoice.expenses ?? []).map((e: any) => ({
       id: e.id,
       description: e.description,
       amount: e.amount,
       sourceType: e.sourceType,
-      date: (e as any).date ?? null,
-      recordedBy: (e.recordedByUser as any)?.name ?? null,
-      kind: "UNIT_EXPENSE"
+      date: e.date ?? null,
+      recordedBy: e.recordedByUser?.name ?? null,
+      kind: "UNIT_EXPENSE",
+      unitCode: e.unit?.code ?? null,
+      unitName: e.unit?.name ?? null
     }))
   ].sort((a, b) => {
     const aTime = a.date ? new Date(a.date).getTime() : 0
@@ -3607,8 +3630,10 @@ async function handleGetInvoiceDetails(
 
   const totalExpenses = allExpenses.reduce((s, e) => s + (e.amount ?? 0), 0)
 
+  const projectLabel = invoice.project?.name ?? invoice.unit?.project?.name ?? ""
+  const unitLabel = invoice.unit ? `${invoice.unit.code} (${invoice.unit.name})` : "المشروع بالكامل"
   const humanReadable: HumanReadable = {
-    ar: `فاتورة ${invoice.invoiceNumber} — الوحدة ${invoice.unit?.code ?? "غير محدد"} (${invoice.unit?.project?.name ?? ""})\nالمبلغ: ${formatCurrency(invoice.amount)} جنيه | المدفوع: ${formatCurrency(invoice.totalPaid)} جنيه | المتبقي: ${formatCurrency(invoice.remainingBalance)} جنيه\nالحالة: ${invoice.isPaid ? "✅ مدفوعة" : "⏳ غير مدفوعة"}\nعدد المصروفات: ${allExpenses.length} | عدد الدفعات: ${invoice.payments?.length ?? 0}`
+    ar: `فاتورة ${invoice.invoiceNumber} — ${unitLabel}${projectLabel ? ` — ${projectLabel}` : ""}\nالمبلغ: ${formatCurrency(invoice.amount)} جنيه | المدفوع: ${formatCurrency(invoice.totalPaid)} جنيه | المتبقي: ${formatCurrency(invoice.remainingBalance)} جنيه\nالحالة: ${invoice.isPaid ? "✅ مدفوعة" : "⏳ غير مدفوعة"}\nعدد المصروفات: ${allExpenses.length} | عدد الدفعات: ${invoice.payments?.length ?? 0}`
   }
 
   return {
@@ -3625,6 +3650,9 @@ async function handleGetInvoiceDetails(
         isPaid: invoice.isPaid,
         issuedAt: invoice.issuedAt,
         dueDate: invoice.dueDate ?? null,
+        project: invoice.project
+          ? { id: invoice.project.id, name: invoice.project.name }
+          : null,
         unit: invoice.unit
           ? {
               id: invoice.unit.id,
