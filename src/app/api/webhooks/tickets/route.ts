@@ -519,6 +519,17 @@ export async function POST(req: NextRequest) {
           })
         }
       }
+
+      // Fallback: اسم الوحدة "يحتوي على" النص (الساكن يقول "عمارة 3" وقد يكون الاسم مسجّل "عمارة ٣" أو أطول)
+      if (!unit && project && trimmedUnitName) {
+        unit = await db.operationalUnit.findFirst({
+          where: {
+            projectId: project.id,
+            name: { contains: trimmedUnitName, mode: "insensitive" }
+          },
+          include: { project: true }
+        })
+      }
     }
 
     if (!unit) {

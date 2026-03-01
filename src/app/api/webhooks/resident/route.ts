@@ -76,6 +76,17 @@ const ACTIONS_DEFINITION = [
       residentName: "اسم الساكن (اختياري)"
     },
     requiredRole: "RESIDENT"
+  },
+  {
+    action: "RESOLVE_UNIT",
+    whenToUse: "لتأكيد الوحدة قبل فتح الشكوى — يطابق ما قاله الساكن (مشروع + عمارة/وحدة) ويرجع نتيجة واحدة فقط، بدون عرض قوائم.",
+    payload: {
+      projectName: "اسم المشروع/الكومباوند (مفضل مع unitName)",
+      unitName: "اسم أو رقم العمارة/الوحدة (مثل عمارة ٣، مبنى 5)",
+      unitCode: "كود الوحدة (إن وُجد)",
+      buildingNumber: "رقم المبنى فقط"
+    },
+    requiredRole: "RESIDENT"
   }
 ] as const
 
@@ -128,7 +139,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    const validActions: ActionType[] = ["IDENTITY", "TICKET_CREATE", "TICKET_LIST", "TICKET_GET", "DELIVERY_ORDER"]
+    const validActions: ActionType[] = ["IDENTITY", "TICKET_CREATE", "TICKET_LIST", "TICKET_GET", "DELIVERY_ORDER", "RESOLVE_UNIT"]
     if (!validActions.includes(action)) {
       return NextResponse.json(
         {
@@ -178,6 +189,15 @@ export async function POST(req: NextRequest) {
         title: body.title,
         description: body.description,
         priority: body.priority
+      })
+    } else if (action === "RESOLVE_UNIT") {
+      targetUrl = `${origin}/api/webhooks/resolve-unit`
+      method = "POST"
+      fetchBody = JSON.stringify({
+        projectName: body.projectName,
+        unitName: body.unitName,
+        unitCode: body.unitCode,
+        buildingNumber: body.buildingNumber
       })
     } else {
       targetUrl = `${origin}/api/webhooks/delivery-orders`
