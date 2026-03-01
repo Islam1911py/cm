@@ -1,4 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
+import { verifyN8nApiKey } from "@/lib/n8n-auth"
+import { resolveUnit } from "@/lib/resolve-unit"
 
 /**
  * أداة موحّدة لعمليات الساكن والهوية.
@@ -191,14 +193,24 @@ export async function POST(req: NextRequest) {
         priority: body.priority
       })
     } else if (action === "RESOLVE_UNIT") {
-      targetUrl = `${origin}/api/webhooks/resolve-unit`
-      method = "POST"
-      fetchBody = JSON.stringify({
+      // Run resolve-unit logic inline to avoid internal fetch (500 on serverless)
+      const auth = await verifyN8nApiKey(req)
+      if (!auth.valid || !auth.context) {
+        return NextResponse.json({ error: auth.error || "Unauthorized" }, { status: 401 })
+      }
+      if (auth.context.role !== "RESIDENT") {
+        return NextResponse.json(
+          { success: false, error: "Only resident context can resolve unit", humanReadable: { ar: "هذا الطلب للسكان فقط." } },
+          { status: 403 }
+        )
+      }
+      const result = await resolveUnit({
         projectName: body.projectName,
         unitName: body.unitName,
         unitCode: body.unitCode,
         buildingNumber: body.buildingNumber
       })
+      return NextResponse.json(result.data, { status: result.status })
     } else {
       targetUrl = `${origin}/api/webhooks/delivery-orders`
       method = "POST"
