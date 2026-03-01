@@ -1,5 +1,7 @@
-/** عدد الأرقام المطلوب لأي رقم يُسجّل في التطبيق (ساكن، موظف، مستخدم، إلخ) */
-export const REQUIRED_PHONE_DIGITS = 20
+/** أقل عدد أرقام مقبول (مع كود الدولة) — مثلاً مصر +20 و 10 أرقام = 12 */
+export const MIN_PHONE_DIGITS = 10
+/** أقصى عدد أرقام (مع كود الدولة) */
+export const MAX_PHONE_DIGITS = 15
 
 export function normalizePhone(input?: string | null): string {
   if (!input) return ""
@@ -11,18 +13,24 @@ export function normalizePhone(input?: string | null): string {
 }
 
 /**
- * يتحقق أن الرقم صالح للتسجيل: 20 رقمًا فقط (بعد إزالة أي رموز).
- * يُستخدم عند تسجيل ساكن، موظف، مستخدم، أو أي رقم في التطبيق.
+ * يتحقق أن الرقم صالح للتسجيل: بين 10 و 15 رقمًا (مع كود الدولة).
+ * يقبل مثلاً مصر: +20 + 10 أرقام = 12 رقمًا.
  */
 export function validatePhoneForRegistration(phone: string | null | undefined): { valid: boolean; error?: string } {
   if (phone == null || String(phone).trim() === "") {
     return { valid: false, error: "الرقم مطلوب" }
   }
   const digits = String(phone).replace(/\D/g, "")
-  if (digits.length !== REQUIRED_PHONE_DIGITS) {
+  if (digits.length < MIN_PHONE_DIGITS) {
     return {
       valid: false,
-      error: `رقم الهاتف يجب أن يكون ${REQUIRED_PHONE_DIGITS} رقمًا بالضبط (مع كود الدولة). المدخل: ${digits.length} رقمًا.`
+      error: `رقم الهاتف يجب أن يكون ${MIN_PHONE_DIGITS} أرقام على الأقل (مع كود الدولة). المدخل: ${digits.length} رقمًا.`
+    }
+  }
+  if (digits.length > MAX_PHONE_DIGITS) {
+    return {
+      valid: false,
+      error: `رقم الهاتف يجب ألا يزيد عن ${MAX_PHONE_DIGITS} رقمًا. المدخل: ${digits.length} رقمًا.`
     }
   }
   return { valid: true }

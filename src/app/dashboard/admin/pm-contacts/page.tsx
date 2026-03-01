@@ -1360,7 +1360,7 @@ export default function PMContactsPage() {
                         />
                       </div>
                       <p className="text-[11px] text-gray-500">
-                        رمز الدولة (+20) ثم الرقم بدون صفر في البداية. 20 رقمًا مطلوبًا.
+                        رمز الدولة (+20) ثم الرقم (مثلاً 10XXXXXXXX). من 10 إلى 15 رقمًا مع كود الدولة.
                       </p>
                     </div>
                     {createForm.role === "PROJECT_MANAGER" && (
