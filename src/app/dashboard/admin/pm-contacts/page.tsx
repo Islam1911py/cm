@@ -48,13 +48,34 @@ const ROLE_SECTIONS: Record<ManagedRole, { title: string; description: string }>
 }
 
 const COUNTRY_CODE_OPTIONS = [
-  { value: "+20", label: "+20 مصر" },
-  { value: "+971", label: "+971 الإمارات" },
-  { value: "+966", label: "+966 السعودية" },
-  { value: "+974", label: "+974 قطر" },
-  { value: "+965", label: "+965 الكويت" },
-  { value: "custom", label: "رمز آخر" }
+  { value: "+20", label: "+20" },
+  { value: "+971", label: "+971" },
+  { value: "+966", label: "+966" },
+  { value: "+974", label: "+974" },
+  { value: "+965", label: "+965" },
+  { value: "custom", label: "آخر" }
 ]
+
+/** يفك الرقم الكامل إلى رمز دولة + الرقم المحلي للعرض */
+function parsePhoneForDisplay(full: string | null | undefined): { prefix: string; number: string } {
+  if (!full || typeof full !== "string") return { prefix: "+20", number: "" }
+  const digits = full.replace(/\D/g, "")
+  if (digits.startsWith("20") && digits.length > 2) return { prefix: "+20", number: digits.slice(2) }
+  if (digits.startsWith("971")) return { prefix: "+971", number: digits.slice(3) }
+  if (digits.startsWith("966")) return { prefix: "+966", number: digits.slice(3) }
+  if (digits.startsWith("974")) return { prefix: "+974", number: digits.slice(3) }
+  if (digits.startsWith("965")) return { prefix: "+965", number: digits.slice(3) }
+  if (digits.length >= 10) return { prefix: "+20", number: digits.slice(-10) }
+  return { prefix: "+20", number: digits }
+}
+
+/** يجمّع رمز الدولة + الرقم المحلي إلى رقم كامل للحفظ */
+function buildFullPhone(prefix: string, number: string): string {
+  const p = (prefix || "+20").trim().replace(/^\+/, "")
+  const n = (number || "").replace(/\D/g, "")
+  if (!n) return ""
+  return `+${p}${n}`
+}
 
 interface ProjectAssignment {
   projectId: string
@@ -91,6 +112,8 @@ export default function PMContactsPage() {
   })
   const [projects, setProjects] = useState<Project[]>([])
   const [phoneDrafts, setPhoneDrafts] = useState<Record<string, string>>({})
+  /** رمز الدولة المعروض لكل جهة اتصال (مثلاً +20) */
+  const [phonePrefixes, setPhonePrefixes] = useState<Record<string, string>>({})
   const [loading, setLoading] = useState(true)
   const [savingPhoneId, setSavingPhoneId] = useState<string | null>(null)
   const [projectDialogContact, setProjectDialogContact] = useState<ContactUser | null>(null)
@@ -177,12 +200,16 @@ export default function PMContactsPage() {
         setProjects(Array.isArray(projectsData) ? projectsData : [])
 
         const initialDrafts: Record<string, string> = {}
+        const initialPrefixes: Record<string, string> = {}
         MANAGED_ROLES.forEach((role) => {
           groups[role].forEach((user) => {
-            initialDrafts[user.id] = user.whatsappPhone ?? ""
+            const full = user.whatsappPhone ?? ""
+            initialDrafts[user.id] = full
+            initialPrefixes[user.id] = parsePhoneForDisplay(full).prefix
           })
         })
         setPhoneDrafts(initialDrafts)
+        setPhonePrefixes(initialPrefixes)
       } catch (err) {
         console.error("Error loading contact data:", err)
         setError(err instanceof Error ? err.message : "تعذر تحميل البيانات")
@@ -375,10 +402,9 @@ export default function PMContactsPage() {
         }))
       }
 
-      setPhoneDrafts((current) => ({
-        ...current,
-        [user.id]: user.whatsappPhone ?? ""
-      }))
+      const fullPhone = user.whatsappPhone ?? ""
+      setPhoneDrafts((current) => ({ ...current, [user.id]: fullPhone }))
+      setPhonePrefixes((current) => ({ ...current, [user.id]: parsePhoneForDisplay(fullPhone).prefix }))
 
       toast({
         title: "تم إنشاء المستخدم",
@@ -506,10 +532,9 @@ export default function PMContactsPage() {
         return nextGroups
       })
 
-      setPhoneDrafts((current) => ({
-        ...current,
-        [updatedContact.id]: updatedContact.whatsappPhone ?? ""
-      }))
+      const full = updatedContact.whatsappPhone ?? ""
+      setPhoneDrafts((current) => ({ ...current, [updatedContact.id]: full }))
+      setPhonePrefixes((current) => ({ ...current, [updatedContact.id]: parsePhoneForDisplay(full).prefix }))
 
       toast({
         title: "تم الحفظ",
@@ -573,6 +598,40 @@ export default function PMContactsPage() {
     }
   }
 
+  const handleClearPhone = async (contact: ContactUser) => {
+    try {
+      setSavingPhoneId(contact.id)
+      const response = await fetch(`/api/users/${contact.id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ whatsappPhone: null })
+      })
+      if (!response.ok) {
+        const errorBody = await response.json().catch(() => null)
+        throw new Error(errorBody?.error || "تعذر مسح الرقم")
+      }
+      const updatedContact: ContactUser = await response.json()
+      const role = updatedContact.role as ManagedRole
+      if (MANAGED_ROLES.includes(role)) {
+        setContactGroups((current) => ({
+          ...current,
+          [role]: current[role].map((u) => (u.id === updatedContact.id ? updatedContact : u))
+        }))
+      }
+      setPhoneDrafts((c) => ({ ...c, [contact.id]: "" }))
+      setPhonePrefixes((c) => ({ ...c, [contact.id]: "+20" }))
+      toast({ title: "تم مسح الرقم", description: "تم إزالة رقم واتساب من هذا المستخدم" })
+    } catch (err) {
+      toast({
+        title: "خطأ",
+        description: err instanceof Error ? err.message : "تعذر مسح الرقم",
+        variant: "destructive"
+      })
+    } finally {
+      setSavingPhoneId(null)
+    }
+  }
+
   const handleSavePhone = async (contact: ContactUser) => {
     const value = phoneDrafts[contact.id]?.trim() ?? ""
 
@@ -602,10 +661,9 @@ export default function PMContactsPage() {
         }))
       }
 
-      setPhoneDrafts((current) => ({
-        ...current,
-        [updatedContact.id]: updatedContact.whatsappPhone ?? ""
-      }))
+      const full = updatedContact.whatsappPhone ?? ""
+      setPhoneDrafts((current) => ({ ...current, [updatedContact.id]: full }))
+      setPhonePrefixes((current) => ({ ...current, [updatedContact.id]: parsePhoneForDisplay(full).prefix }))
 
       toast({
         title: "تم الحفظ",
@@ -895,16 +953,37 @@ export default function PMContactsPage() {
 
                     <div className="space-y-1">
                       <Label className="text-xs text-gray-500">رقم واتساب</Label>
-                      <Input
-                        value={phoneDrafts[contact.id] ?? ""}
-                        onChange={(event) =>
-                          setPhoneDrafts((current) => ({
-                            ...current,
-                            [contact.id]: event.target.value
-                          }))
-                        }
-                        placeholder="أدخل الرقم بصيغة دولية"
-                      />
+                      <div className="flex gap-2">
+                        <select
+                          className="w-16 rounded-md border border-input bg-muted/50 px-2 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          value={phonePrefixes[contact.id] ?? parsePhoneForDisplay(phoneDrafts[contact.id]).prefix}
+                          onChange={(e) => {
+                            const p = e.target.value
+                            setPhonePrefixes((c) => ({ ...c, [contact.id]: p }))
+                            setPhoneDrafts((c) => ({
+                              ...c,
+                              [contact.id]: buildFullPhone(p, parsePhoneForDisplay(c[contact.id]).number)
+                            }))
+                          }}
+                        >
+                          {COUNTRY_CODE_OPTIONS.filter((o) => o.value !== "custom").map((opt) => (
+                            <option key={opt.value} value={opt.value}>{opt.label}</option>
+                          ))}
+                        </select>
+                        <Input
+                          className="flex-1 min-w-0"
+                          inputMode="numeric"
+                          placeholder="10XXXXXXXX"
+                          value={parsePhoneForDisplay(phoneDrafts[contact.id]).number}
+                          onChange={(e) => {
+                            const num = e.target.value.replace(/\D/g, "")
+                            setPhoneDrafts((c) => ({
+                              ...c,
+                              [contact.id]: buildFullPhone(phonePrefixes[contact.id] ?? "+20", num)
+                            }))
+                          }}
+                        />
+                      </div>
                     </div>
 
                     <div className="space-y-2">
@@ -987,6 +1066,18 @@ export default function PMContactsPage() {
                           {savingPhoneId === contact.id && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                           حفظ الرقم
                         </Button>
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            setPhoneDrafts((c) => ({ ...c, [contact.id]: "" }))
+                            setPhonePrefixes((c) => ({ ...c, [contact.id]: "+20" }))
+                            void handleClearPhone(contact)
+                          }}
+                          disabled={savingPhoneId === contact.id}
+                        >
+                          مسح الرقم
+                        </Button>
                       </div>
                       <p className="text-[11px] text-gray-400">
                         {contact.whatsappPhone ? "سيتم اعتماد الرقم بعد الحفظ" : "لم يتم تسجيل رقم بعد"}
@@ -1012,7 +1103,10 @@ export default function PMContactsPage() {
           <p className="text-sm text-gray-400">لا يوجد مستخدمون بهذا الدور حتى الآن.</p>
         ) : (
           <div className="space-y-4">
-            {contacts.map((contact) => (
+            {contacts.map((contact) => {
+              const { prefix, number } = parsePhoneForDisplay(phoneDrafts[contact.id])
+              const currentPrefix = phonePrefixes[contact.id] ?? prefix
+              return (
               <div
                 key={contact.id}
                 className="grid grid-cols-1 md:grid-cols-[1.5fr_1fr_auto] gap-3 md:items-center border border-gray-100 rounded-lg p-4"
@@ -1024,16 +1118,31 @@ export default function PMContactsPage() {
 
                 <div className="space-y-1">
                   <Label className="text-xs text-gray-500">رقم واتساب</Label>
-                  <Input
-                    value={phoneDrafts[contact.id] ?? ""}
-                    onChange={(event) =>
-                      setPhoneDrafts((current) => ({
-                        ...current,
-                        [contact.id]: event.target.value
-                      }))
-                    }
-                    placeholder="أدخل الرقم بصيغة دولية"
-                  />
+                  <div className="flex gap-2">
+                    <select
+                      className="w-16 rounded-md border border-input bg-muted/50 px-2 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      value={currentPrefix}
+                      onChange={(e) => {
+                        const p = e.target.value
+                        setPhonePrefixes((c) => ({ ...c, [contact.id]: p }))
+                        setPhoneDrafts((c) => ({ ...c, [contact.id]: buildFullPhone(p, parsePhoneForDisplay(c[contact.id]).number) }))
+                      }}
+                    >
+                      {COUNTRY_CODE_OPTIONS.filter((o) => o.value !== "custom").map((opt) => (
+                        <option key={opt.value} value={opt.value}>{opt.label}</option>
+                      ))}
+                    </select>
+                    <Input
+                      className="flex-1 min-w-0"
+                      inputMode="numeric"
+                      placeholder="10XXXXXXXX"
+                      value={number}
+                      onChange={(e) => {
+                        const num = e.target.value.replace(/\D/g, "")
+                        setPhoneDrafts((c) => ({ ...c, [contact.id]: buildFullPhone(phonePrefixes[contact.id] ?? "+20", num) }))
+                      }}
+                    />
+                  </div>
                 </div>
 
                 <div className="flex flex-col gap-2 md:items-end">
@@ -1046,13 +1155,25 @@ export default function PMContactsPage() {
                       {savingPhoneId === contact.id && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
                       حفظ الرقم
                     </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setPhoneDrafts((c) => ({ ...c, [contact.id]: "" }))
+                        setPhonePrefixes((c) => ({ ...c, [contact.id]: "+20" }))
+                        void handleClearPhone(contact)
+                      }}
+                      disabled={savingPhoneId === contact.id}
+                    >
+                      مسح الرقم
+                    </Button>
                   </div>
                   <p className="text-[11px] text-gray-400">
                     {contact.whatsappPhone ? "سيتم اعتماد الرقم بعد الحفظ" : "لم يتم تسجيل رقم بعد"}
                   </p>
                 </div>
               </div>
-            ))}
+            )})}
           </div>
         )}
       </section>
@@ -1203,50 +1324,44 @@ export default function PMContactsPage() {
                     </div>
                     <div className="grid gap-2">
                       <Label>رقم واتساب</Label>
-                      <div className="flex flex-col gap-2">
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-                          <div className="flex gap-2">
-                            <select
-                              className="w-36 rounded-md border border-input bg-background px-3 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                              value={useCustomCountryCode ? "custom" : createForm.countryCode}
-                              onChange={(event) => handleCountryCodeChange(event.target.value)}
-                            >
-                              {COUNTRY_CODE_OPTIONS.map((option) => (
-                                <option key={option.value} value={option.value}>
-                                  {option.label}
-                                </option>
-                              ))}
-                            </select>
-                            {useCustomCountryCode && (
-                              <Input
-                                className="w-28"
-                                placeholder="+___"
-                                value={createForm.countryCode}
-                                onChange={(event) =>
-                                  setCreateForm((current) => ({
-                                    ...current,
-                                    countryCode: event.target.value
-                                  }))
-                                }
-                              />
-                            )}
-                          </div>
+                      <div className="flex gap-2">
+                        <select
+                          className="w-20 rounded-md border border-input bg-muted/50 px-2 py-2 text-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                          value={useCustomCountryCode ? "custom" : createForm.countryCode}
+                          onChange={(event) => handleCountryCodeChange(event.target.value)}
+                        >
+                          {COUNTRY_CODE_OPTIONS.map((option) => (
+                            <option key={option.value} value={option.value}>
+                              {option.label}
+                            </option>
+                          ))}
+                        </select>
+                        {useCustomCountryCode ? (
                           <Input
-                            className="flex-1"
-                            placeholder="أدخل الرقم بدون صفر البداية"
-                            value={createForm.phoneNumber}
-                            onChange={(event) =>
-                              setCreateForm((current) => ({
-                                ...current,
-                                phoneNumber: event.target.value
-                              }))
+                            className="w-24"
+                            placeholder="+___"
+                            value={createForm.countryCode}
+                            onChange={(e) =>
+                              setCreateForm((c) => ({ ...c, countryCode: e.target.value }))
                             }
                           />
-                        </div>
-                        <p className="text-[11px] text-gray-500">
-                          يتم تحويل الرقم تلقائيًا إلى الصيغة الدولية المعيارية.
-                        </p>
+                        ) : null}
+                        <Input
+                          className="flex-1 min-w-0"
+                          inputMode="numeric"
+                          placeholder="10XXXXXXXX"
+                          value={createForm.phoneNumber}
+                          onChange={(event) =>
+                            setCreateForm((current) => ({
+                              ...current,
+                              phoneNumber: event.target.value.replace(/\D/g, "")
+                            }))
+                          }
+                        />
                       </div>
+                      <p className="text-[11px] text-gray-500">
+                        رمز الدولة (+20) ثم الرقم بدون صفر في البداية. 20 رقمًا مطلوبًا.
+                      </p>
                     </div>
                     {createForm.role === "PROJECT_MANAGER" && (
                       <div className="space-y-3 rounded-md border border-gray-200 p-4">
