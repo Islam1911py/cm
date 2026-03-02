@@ -21,9 +21,9 @@ export async function GET(req: NextRequest) {
     // Build where clause
     let where: any = {}
 
-    // Project Managers can only see their assigned projects
+    // Project Managers can only see their assigned projects (via unit.projectId)
     if (role === "PROJECT_MANAGER") {
-      where.projectId = { in: projectIds }
+      where.unit = { projectId: { in: projectIds } }
     }
 
     // Filter by status if provided

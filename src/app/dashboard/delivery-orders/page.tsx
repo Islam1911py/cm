@@ -39,15 +39,19 @@ import { format } from "date-fns"
 
 interface DeliveryOrder {
   id: string
-  orderText: string
+  orderText?: string
+  title?: string
+  description?: string
   status: "NEW" | "IN_PROGRESS" | "DELIVERED"
   notes?: string
   createdAt: string
-  resident: {
+  resident?: {
     name: string
     phone: string
-    unitNumber: string
-  }
+    unitNumber?: string
+  } | null
+  contactName?: string | null
+  contactPhone?: string | null
   unit: {
     name: string
     code: string
@@ -220,15 +224,15 @@ export default function DeliveryOrdersPage() {
                 <div className="flex flex-col lg:flex-row lg:items-start lg:justify-between gap-4">
                   <div className="flex-1 space-y-3">
                     <div className="flex flex-wrap items-start gap-3">
-                      <h3 className="font-semibold text-lg">{order.orderText}</h3>
+                      <h3 className="font-semibold text-lg">{order.orderText ?? order.title ?? order.description ?? "طلب توصيل"}</h3>
                       {getStatusBadge(order.status)}
                     </div>
                     
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 text-sm">
                       <div>
                         <p className="text-muted-foreground mb-1">السكان</p>
-                        <p className="font-medium">{order.resident.name}</p>
-                        <p className="text-xs text-muted-foreground">{order.resident.phone}</p>
+                        <p className="font-medium">{order.resident?.name ?? order.contactName ?? "—"}</p>
+                        <p className="text-xs text-muted-foreground">{order.resident?.phone ?? order.contactPhone ?? "—"}</p>
                       </div>
                       <div>
                         <p className="text-muted-foreground mb-1">الموقع</p>

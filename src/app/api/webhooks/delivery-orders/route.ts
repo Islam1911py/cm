@@ -130,32 +130,18 @@ export async function POST(req: NextRequest) {
       }
     })
 
-    if (!resident) {
-      await logWebhookEvent(
-        auth.context.keyId,
-        "DELIVERY_ORDER_CREATED",
-        "/api/webhooks/delivery-orders",
-        "POST",
-        404,
-        body,
-        { error: "Resident not found" },
-        "Resident not found for the given phone in this unit",
-        ipAddress
-      )
-
-      return NextResponse.json(
-        { error: "Resident not found for the given phone in this unit" },
-        { status: 404 }
-      )
-    }
+    const contactNameValue =
+      resident?.name ?? (typeof residentName === "string" && residentName.trim() ? residentName.trim() : null)
 
     const order = await db.deliveryOrder.create({
       data: {
         title: normalizedDescription.substring(0, 100),
         description: normalizedDescription,
         status: "NEW",
-        residentId: resident.id,
-        unitId: unit.id
+        residentId: resident?.id ?? null,
+        unitId: unit.id,
+        contactPhone: resident ? null : normalizedPhone,
+        contactName: resident ? null : contactNameValue
       },
       include: {
         resident: true,
@@ -167,6 +153,9 @@ export async function POST(req: NextRequest) {
       }
     })
 
+    const requesterName = order.resident?.name ?? order.contactName ?? "ساكن (غير مسجّل)"
+    const requesterPhone = order.resident?.phone ?? order.contactPhone ?? normalizedPhone
+
     await notifyN8nEvent("DELIVERY_ORDER_CREATED", {
       deliveryOrder: {
         id: order.id,
@@ -174,12 +163,16 @@ export async function POST(req: NextRequest) {
         description: order.description,
         status: order.status
       },
-      resident: {
-        id: order.resident.id,
-        name: order.resident.name,
-        phone: order.resident.phone,
-        email: order.resident.email
-      },
+      resident: order.resident
+        ? {
+            id: order.resident.id,
+            name: order.resident.name,
+            phone: order.resident.phone,
+            email: order.resident.email
+          }
+        : null,
+      contactName: order.contactName,
+      contactPhone: order.contactPhone,
       unit: {
         id: order.unit.id,
         code: order.unit.code,
@@ -202,8 +195,8 @@ export async function POST(req: NextRequest) {
             description: order.description
           },
           resident: {
-            name: order.resident.name,
-            phone: order.resident.phone ?? null
+            name: requesterName,
+            phone: requesterPhone ?? null
           },
           unit: {
             code: order.unit.code,
@@ -211,7 +204,7 @@ export async function POST(req: NextRequest) {
             projectName: order.unit.project?.name ?? null
           },
           humanReadable: {
-            ar: `طلب استلام/توصيل جديد من الساكن ${order.resident.name} في الوحدة ${order.unit.code} — ${order.title}`
+            ar: `طلب استلام/توصيل جديد من ${requesterName} في الوحدة ${order.unit.code} — ${order.title}`
           }
         })
       }

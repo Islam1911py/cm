@@ -23,8 +23,7 @@ export async function GET(
       where: { id },
       include: {
         resident: true,
-        unit: true,
-        project: true
+        unit: { include: { project: true } }
       }
     })
 
@@ -32,8 +31,8 @@ export async function GET(
       return NextResponse.json({ error: "Delivery order not found" }, { status: 404 })
     }
 
-    // Check if user has access to this order
-    if (role === "PROJECT_MANAGER" && !projectIds.includes(order.projectId)) {
+    const orderProjectId = order.unit?.projectId
+    if (role === "PROJECT_MANAGER" && orderProjectId && !projectIds.includes(orderProjectId)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
@@ -66,15 +65,16 @@ export async function PATCH(
 
     // Check if order exists and user has access
     const existingOrder = await db.deliveryOrder.findUnique({
-      where: { id }
+      where: { id },
+      select: { id: true, unitId: true, unit: { select: { projectId: true } } }
     })
 
     if (!existingOrder) {
       return NextResponse.json({ error: "Delivery order not found" }, { status: 404 })
     }
 
-    // Check if user has access to this order
-    if (role === "PROJECT_MANAGER" && !projectIds.includes(existingOrder.projectId)) {
+    const orderProjectId = existingOrder.unit?.projectId
+    if (role === "PROJECT_MANAGER" && orderProjectId && !projectIds.includes(orderProjectId)) {
       return NextResponse.json({ error: "Forbidden" }, { status: 403 })
     }
 
@@ -90,7 +90,7 @@ export async function PATCH(
     // If status is DELIVERED, set deliveredAt and deliveredBy
     if (status === "DELIVERED") {
       updateData.deliveredAt = new Date()
-      updateData.deliveredBy = userId
+      updateData.deliveredById = userId
     }
 
     // Update delivery order
@@ -99,8 +99,7 @@ export async function PATCH(
       data: updateData,
       include: {
         resident: true,
-        unit: true,
-        project: true
+        unit: { include: { project: true } }
       }
     })
 

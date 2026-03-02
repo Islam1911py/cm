@@ -309,11 +309,13 @@ model DeliveryOrder {
   createdAt       DateTime        @default(now())
   updatedAt       DateTime        @updatedAt
   deliveredAt     DateTime?
-  residentId      String
+  residentId      String?
   unitId          String
+  contactPhone    String?         // عند عدم وجود ساكن مسجّل
+  contactName     String?         // عند عدم وجود ساكن مسجّل
   assignedToId    String?
   deliveredById   String?
-  resident        Resident        @relation(fields: [residentId], references: [id])
+  resident        Resident?       @relation(fields: [residentId], references: [id])
   unit            OperationalUnit @relation(fields: [unitId], references: [id])
   assignedTo      User?           @relation("DeliveryAssignedTo", fields: [assignedToId], references: [id])
   deliveredByUser User?           @relation("DeliveryDeliveredBy", fields: [deliveredById], references: [id])
