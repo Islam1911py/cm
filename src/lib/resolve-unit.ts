@@ -1,5 +1,5 @@
-import { Prisma } from "@prisma/client"
 import { db } from "@/lib/db"
+import { findProjectBySlugOrName, findUnitBySlugOrName } from "@/lib/project-slug"
 
 export type ResolveUnitBody = {
   projectName?: string
@@ -37,24 +37,25 @@ export async function resolveUnit(body: ResolveUnitBody): Promise<ResolveUnitRes
       }
     }
 
+    // المشروع مطلوب — مفيش search خارج المشروع (لا نربط وحدة بمشروع غلط)
+    if (unitName || requestedCode) {
+      if (!projectName) {
+        return {
+          status: 400,
+          data: {
+            success: false,
+            error: "Project required",
+            humanReadable: { ar: "حدد اسم المشروع أو الكومباوند أولاً ثم رقم/اسم العمارة (مثلاً: كومباوند كرمة، عمارة ٢)." }
+          }
+        }
+      }
+    }
+
     let project: { id: string; name: string } | null = null
     if (projectName) {
-      project = await db.project.findFirst({
-        where: { name: { equals: projectName, mode: "insensitive" } },
-        select: { id: true, name: true }
-      })
-      if (!project) {
-        const fallback = await db.$queryRaw<{ id: string; name: string }[]>(
-          Prisma.sql`SELECT "id", "name" FROM "Project" WHERE LOWER("name") = LOWER(${projectName}) LIMIT 1`
-        )
-        if (fallback.length > 0) project = fallback[0]
-      }
-      if (!project) {
-        project = await db.project.findFirst({
-          where: { name: { contains: projectName, mode: "insensitive" } },
-          select: { id: true, name: true }
-        })
-      }
+      // مرحلتين: slug ثم fallback name contains (بدون OR)، ثم اعتماد على projectId
+      const resolved = await findProjectBySlugOrName(db, projectName)
+      if (resolved) project = { id: resolved.id, name: resolved.name }
       if (!project) {
         return {
           status: 404,
@@ -91,6 +92,12 @@ export async function resolveUnit(body: ResolveUnitBody): Promise<ResolveUnitRes
       if (found) unit = found
     }
 
+    // مرحلتين: slug ثم fallback name (بدون OR)
+    if (!unit && unitName && projectId) {
+      const bySlug = await findUnitBySlugOrName(db, projectId, unitName)
+      if (bySlug) unit = bySlug
+    }
+
     if (!unit && unitName && projectId) {
       const exact = await db.operationalUnit.findFirst({
         where: { name: { equals: unitName, mode: "insensitive" }, projectId },
@@ -121,26 +128,7 @@ export async function resolveUnit(body: ResolveUnitBody): Promise<ResolveUnitRes
       }
     }
 
-    if (!unit && (unitName || requestedCode)) {
-      const projectsToSearch = projectId ? [projectId] : (await db.project.findMany({ select: { id: true } })).map((p) => p.id)
-      for (const pid of projectsToSearch) {
-        if (requestedCode) {
-          const u = await db.operationalUnit.findFirst({
-            where: { projectId: pid, code: { equals: requestedCode, mode: "insensitive" } },
-            select: { id: true, code: true, name: true, projectId: true }
-          })
-          if (u) { unit = u; break }
-        }
-        if (!unit && unitName) {
-          const u = await db.operationalUnit.findFirst({
-            where: { projectId: pid, name: { contains: unitName, mode: "insensitive" } },
-            select: { id: true, code: true, name: true, projectId: true }
-          })
-          if (u) { unit = u; break }
-        }
-      }
-    }
-
+    // مفيش search خارج المشروع — matching داخل المشروع فقط (deterministic، لا وحدة غلط)
     if (!unit) {
       return {
         status: 404,

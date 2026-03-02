@@ -12,6 +12,7 @@ import {
 } from "@/lib/expense-search"
 import { verifyN8nApiKey, logWebhookEvent } from "@/lib/n8n-auth"
 import { buildPhoneVariants } from "@/lib/phone"
+import { webhookHttpStatus } from "@/lib/webhook-response"
 
 const ENDPOINT = "/api/webhooks/project-managers"
 
@@ -326,7 +327,8 @@ async function resolveProjectManager(senderPhone: string) {
           project: {
             select: {
               id: true,
-              name: true
+              name: true,
+              slug: true
             }
           }
         }
@@ -1290,11 +1292,15 @@ async function handleUnitExpensesList(
   }
 
   if (!projectRecord && normalizedProjectName) {
+    const { projectNameToMatchSlug } = await import("@/lib/project-slug")
+    const inputSlug = projectNameToMatchSlug(normalizedProjectName)
+
     if (manager.canViewAllProjects) {
       const candidates = await db.project.findMany({
         select: {
           id: true,
-          name: true
+          name: true,
+          slug: true
         },
         orderBy: {
           name: "asc"
@@ -1303,14 +1309,16 @@ async function handleUnitExpensesList(
 
       const lowerSearch = normalizedProjectName.toLowerCase()
 
-      const matchedCandidates = candidates.filter((candidate) =>
-        candidate.name ? candidate.name.toLowerCase().includes(lowerSearch) : false
+      const matchedCandidates = candidates.filter(
+        (candidate) =>
+          (candidate.name ? candidate.name.toLowerCase().includes(lowerSearch) : false) ||
+          (inputSlug && candidate.slug === inputSlug)
       )
 
-      const exactMatch = matchedCandidates.find((candidate) =>
-        candidate.name
-          ? candidate.name.toLowerCase().trim() === lowerSearch
-          : false
+      const exactMatch = matchedCandidates.find(
+        (candidate) =>
+          (inputSlug && candidate.slug === inputSlug) ||
+          (candidate.name ? candidate.name.toLowerCase().trim() === lowerSearch : false)
       )
 
       if (exactMatch) {
@@ -1356,10 +1364,13 @@ async function handleUnitExpensesList(
       }
     } else {
       const matchedAssignment = manager.assignedProjects.find((assignment) => {
-        const assignmentName = assignment.project?.name
-        return assignmentName
-          ? assignmentName.toLowerCase().trim() === normalizedProjectName.toLowerCase()
+        const proj = assignment.project
+        if (!proj) return false
+        const nameMatch = proj.name
+          ? proj.name.toLowerCase().trim() === normalizedProjectName.toLowerCase()
           : false
+        const slugMatch = inputSlug && proj.slug === inputSlug
+        return nameMatch || slugMatch
       })
 
       if (!matchedAssignment) {
@@ -2707,7 +2718,7 @@ export async function POST(req: NextRequest) {
   try {
     requestBody = await req.json()
   } catch (error) {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 })
+    return NextResponse.json({ error: "Invalid JSON body" }, { status: webhookHttpStatus(400) })
   }
 
   const auth = await verifyN8nApiKey(req)
@@ -2728,7 +2739,7 @@ export async function POST(req: NextRequest) {
       ipAddress
     )
 
-    return NextResponse.json({ error: "Forbidden" }, { status: 403 })
+    return NextResponse.json({ error: "Forbidden" }, { status: webhookHttpStatus(403) })
   }
 
   const action = requestBody?.action
@@ -2736,11 +2747,11 @@ export async function POST(req: NextRequest) {
   const payload = requestBody?.payload ?? {}
 
   if (!action || !ALLOWED_ACTIONS.includes(action as AllowedAction)) {
-    return NextResponse.json({ error: "Unsupported action" }, { status: 400 })
+    return NextResponse.json({ error: "Unsupported action" }, { status: webhookHttpStatus(400) })
   }
 
   if (!senderPhone) {
-    return NextResponse.json({ error: "senderPhone is required" }, { status: 400 })
+    return NextResponse.json({ error: "senderPhone is required" }, { status: webhookHttpStatus(400) })
   }
 
   const manager = await resolveProjectManager(senderPhone)
@@ -2760,7 +2771,7 @@ export async function POST(req: NextRequest) {
 
     return NextResponse.json(
       { error: "Project manager not found for sender phone" },
-      { status: 404 }
+      { status: webhookHttpStatus(404) }
     )
   }
 
@@ -2828,5 +2839,5 @@ export async function POST(req: NextRequest) {
     ipAddress
   )
 
-  return NextResponse.json(enrichedBody, { status: response.status })
+  return NextResponse.json(enrichedBody, { status: webhookHttpStatus(response.status) })
 }

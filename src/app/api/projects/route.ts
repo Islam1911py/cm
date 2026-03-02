@@ -130,9 +130,11 @@ export async function POST(request: NextRequest) {
       )
     }
 
+    const { projectSlugForCreate } = await import("@/lib/project-slug")
     const project = await db.project.create({
       data: {
         name,
+        slug: projectSlugForCreate(name),
         typeId,
         isActive: isActive !== false,
       },

@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { verifyN8nApiKey } from "@/lib/n8n-auth"
 import { resolveUnit } from "@/lib/resolve-unit"
+import { webhookHttpStatus } from "@/lib/webhook-response"
 
 /**
  * أداة موحّدة لعمليات الساكن والهوية.
@@ -137,7 +138,7 @@ export async function POST(req: NextRequest) {
           humanReadable: { ar: "أرسل action في الـ payload. استدعِ GET على نفس الرابط لرؤية البرومبت والـ actions." },
           actions: ACTIONS_DEFINITION.map((a) => a.action)
         },
-        { status: 400 }
+        { status: webhookHttpStatus(400) }
       )
     }
 
@@ -150,7 +151,7 @@ export async function POST(req: NextRequest) {
           humanReadable: { ar: `القيمة ${action} غير صحيحة. القيم المسموحة: ${validActions.join(", ")}.` },
           actions: validActions
         },
-        { status: 400 }
+        { status: webhookHttpStatus(400) }
       )
     }
 
@@ -201,7 +202,7 @@ export async function POST(req: NextRequest) {
       if (auth.context.role !== "RESIDENT") {
         return NextResponse.json(
           { success: false, error: "Only resident context can resolve unit", humanReadable: { ar: "هذا الطلب للسكان فقط." } },
-          { status: 403 }
+          { status: webhookHttpStatus(403) }
         )
       }
       const result = await resolveUnit({
@@ -210,7 +211,7 @@ export async function POST(req: NextRequest) {
         unitCode: body.unitCode,
         buildingNumber: body.buildingNumber
       })
-      return NextResponse.json(result.data, { status: result.status })
+      return NextResponse.json(result.data, { status: webhookHttpStatus(result.status) })
     } else {
       targetUrl = `${origin}/api/webhooks/delivery-orders`
       method = "POST"
@@ -231,7 +232,7 @@ export async function POST(req: NextRequest) {
     })
 
     const data = await res.json().catch(() => ({ error: "Invalid JSON from upstream" }))
-    return NextResponse.json(data, { status: res.status })
+    return NextResponse.json(data, { status: webhookHttpStatus(res.status) })
   } catch (error) {
     console.error("RESIDENT_TOOL_ERROR", error)
     return NextResponse.json(

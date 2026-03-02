@@ -61,6 +61,7 @@ model User {
 model Project {
   id                   String                   @id @default(cuid())
   name                 String                   @unique
+  slug                 String?                  @unique // ناتج من الاسم (لا default عشوائي)؛ يُملأ عند الإنشاء أو بالـ backfill
   typeId               String
   monthlyBillingDay    Int?                     @default(1)
   isActive             Boolean                  @default(true)
@@ -123,6 +124,7 @@ model OperationalUnit {
   type                 String
   typeId               String?
   projectId            String
+  slug                 String?              // تطبيع للبحث داخل المشروع فقط (ليس فريداً globally)
   monthlyManagementFee Float?               @default(0)
   monthlyBillingDay    Int?                 @default(1)
   isActive             Boolean              @default(true)
@@ -142,6 +144,7 @@ model OperationalUnit {
   expenses            UnitExpense[]
 
   @@unique([projectId, code])
+  @@index([projectId, slug])
 }
 
 model OwnerAssociation {

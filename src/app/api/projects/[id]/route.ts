@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
+import { projectSlugForCreate } from "@/lib/project-slug"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 
@@ -17,9 +18,10 @@ export async function PATCH(
     const body = await req.json()
     const { name, isActive, monthlyBillingDay } = body
 
-    const data: { name?: string; isActive?: boolean; monthlyBillingDay?: number | null } = {}
+    const data: { name?: string; slug?: string | null; isActive?: boolean; monthlyBillingDay?: number | null } = {}
     if (typeof name === "string" && name.trim()) {
       data.name = name.trim()
+      data.slug = projectSlugForCreate(data.name)
     }
     if (typeof isActive === "boolean") {
       data.isActive = isActive

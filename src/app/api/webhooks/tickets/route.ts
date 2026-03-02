@@ -422,7 +422,7 @@ export async function POST(req: NextRequest) {
       )
     }
 
-    // Resolve project if provided
+    // Resolve project if provided (slug + name للاستفادة من تطبيع عربي/إنجليزي وأخطاء إملائية)
     let project: { id: string; name: string } | null = null
     if (trimmedProjectName) {
       project = await db.project.findFirst({
@@ -434,10 +434,13 @@ export async function POST(req: NextRequest) {
         const fallbackProject = await db.$queryRaw<{ id: string; name: string }[]>(
           Prisma.sql`SELECT "id", "name" FROM "Project" WHERE LOWER("name") = LOWER(${trimmedProjectName}) LIMIT 1`
         )
+        if (fallbackProject.length > 0) project = fallbackProject[0]
+      }
 
-        if (fallbackProject.length > 0) {
-          project = fallbackProject[0]
-        }
+      if (!project) {
+        const { findProjectBySlugOrName } = await import("@/lib/project-slug")
+        const bySlug = await findProjectBySlugOrName(db, trimmedProjectName)
+        if (bySlug) project = { id: bySlug.id, name: bySlug.name }
       }
 
       if (!project) {

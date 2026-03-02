@@ -32,6 +32,7 @@ import {
   type StaffSearchMatch,
   type StaffResolution
 } from "@/lib/staff-search"
+import { webhookHttpStatus } from "@/lib/webhook-response"
 
 const ENDPOINT = "/api/webhooks/accountants"
 
@@ -2173,10 +2174,14 @@ async function handleListUnitExpenses(
   let project: { id: string; name: string | null } | null = null
 
   if (normalizedProjectName && !resolvedProjectId) {
+    const { projectNameToMatchSlug } = await import("@/lib/project-slug")
+    const inputSlug = projectNameToMatchSlug(normalizedProjectName)
+
     const candidates = await db.project.findMany({
       select: {
         id: true,
-        name: true
+        name: true,
+        slug: true
       },
       orderBy: {
         name: "asc"
@@ -2185,14 +2190,16 @@ async function handleListUnitExpenses(
 
     const lowerSearch = normalizedProjectName.toLowerCase()
 
-    const matchedCandidates = candidates.filter((candidate) =>
-      candidate.name ? candidate.name.toLowerCase().includes(lowerSearch) : false
+    const matchedCandidates = candidates.filter(
+      (candidate) =>
+        (candidate.name ? candidate.name.toLowerCase().includes(lowerSearch) : false) ||
+        (inputSlug && candidate.slug === inputSlug)
     )
 
-    const exactMatch = matchedCandidates.find((candidate) =>
-      candidate.name
-        ? candidate.name.toLowerCase().trim() === lowerSearch
-        : false
+    const exactMatch = matchedCandidates.find(
+      (candidate) =>
+        (inputSlug && candidate.slug === inputSlug) ||
+        (candidate.name ? candidate.name.toLowerCase().trim() === lowerSearch : false)
     )
 
     if (exactMatch) {
@@ -3200,20 +3207,25 @@ async function handleListInvoices(
   let project: { id: string; name: string | null } | null = null
 
   if (normalizedProjectName && !resolvedProjectId) {
+    const { projectNameToMatchSlug } = await import("@/lib/project-slug")
+    const inputSlug = projectNameToMatchSlug(normalizedProjectName)
+
     const candidates = await db.project.findMany({
-      select: { id: true, name: true },
+      select: { id: true, name: true, slug: true },
       orderBy: { name: "asc" }
     })
 
     const lowerSearch = normalizedProjectName.toLowerCase()
-    const matchedCandidates = candidates.filter((candidate) =>
-      candidate.name ? candidate.name.toLowerCase().includes(lowerSearch) : false
+    const matchedCandidates = candidates.filter(
+      (candidate) =>
+        (candidate.name ? candidate.name.toLowerCase().includes(lowerSearch) : false) ||
+        (inputSlug && candidate.slug === inputSlug)
     )
 
-    const exactMatch = matchedCandidates.find((candidate) =>
-      candidate.name
-        ? candidate.name.toLowerCase().trim() === lowerSearch
-        : false
+    const exactMatch = matchedCandidates.find(
+      (candidate) =>
+        (inputSlug && candidate.slug === inputSlug) ||
+        (candidate.name ? candidate.name.toLowerCase().trim() === lowerSearch : false)
     )
 
     if (exactMatch) {
@@ -3739,7 +3751,7 @@ export async function POST(req: NextRequest) {
       "Forbidden accountant webhook access"
     )
 
-    return NextResponse.json(responseBody, { status: 403 })
+    return NextResponse.json(responseBody, { status: webhookHttpStatus(403) })
   }
 
   let parsed: RequestBody
@@ -3763,7 +3775,7 @@ export async function POST(req: NextRequest) {
       "Malformed JSON"
     )
 
-    return NextResponse.json(responseBody, { status: 400 })
+    return NextResponse.json(responseBody, { status: webhookHttpStatus(400) })
   }
 
   const { action, senderPhone, payload } = parsed
@@ -3785,7 +3797,7 @@ export async function POST(req: NextRequest) {
       "Missing action, senderPhone, or payload"
     )
 
-    return NextResponse.json(responseBody, { status: 400 })
+    return NextResponse.json(responseBody, { status: webhookHttpStatus(400) })
   }
 
   if (!ALLOWED_ACTIONS.includes(action as AllowedAction)) {
@@ -3805,7 +3817,7 @@ export async function POST(req: NextRequest) {
       `Unsupported action: ${action}`
     )
 
-    return NextResponse.json(responseBody, { status: 400 })
+    return NextResponse.json(responseBody, { status: webhookHttpStatus(400) })
   }
 
   const accountant = await resolveAccountant(senderPhone)
@@ -3830,7 +3842,7 @@ export async function POST(req: NextRequest) {
       "Accountant phone not resolved"
     )
 
-    return NextResponse.json(responseBody, { status: 404 })
+    return NextResponse.json(responseBody, { status: webhookHttpStatus(404) })
   }
 
   const handler = HANDLERS[action as AllowedAction]
@@ -3869,5 +3881,5 @@ export async function POST(req: NextRequest) {
     handlerResponse.body.success ? undefined : handlerResponse.body.error
   )
 
-  return NextResponse.json(handlerResponse.body, { status: handlerResponse.status })
+  return NextResponse.json(handlerResponse.body, { status: webhookHttpStatus(handlerResponse.status) })
 }

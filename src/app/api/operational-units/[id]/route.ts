@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { getServerSession } from "next-auth"
 import { authOptions } from "@/lib/auth"
 import { db } from "@/lib/db"
+import { unitNameToMatchSlug } from "@/lib/project-slug"
 
 // GET /api/operational-units/[id]
 export async function GET(
@@ -72,7 +73,7 @@ export async function PUT(
     const unit = await db.operationalUnit.update({
       where: { id },
       data: {
-        ...(name && { name }),
+        ...(name && { name, slug: unitNameToMatchSlug(name) || null }),
         ...(code && { code }),
         ...(typeName !== undefined && { type: typeName }),
         ...(resolvedTypeId !== undefined && { typeId: resolvedTypeId }),

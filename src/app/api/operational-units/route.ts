@@ -113,6 +113,7 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unit code must be unique within project" }, { status: 400 })
     }
 
+    const { unitNameToMatchSlug } = await import("@/lib/project-slug")
     const unit = await db.operationalUnit.create({
       data: {
         projectId,
@@ -120,6 +121,7 @@ export async function POST(req: NextRequest) {
         code,
         type: typeName,
         typeId: resolvedTypeId,
+        slug: unitNameToMatchSlug(name) || null,
         isActive: true
       }
     })
@@ -146,8 +148,12 @@ export async function PUT(
     const body = await req.json()
     const { name, code, type, isActive } = body
 
+    const { unitNameToMatchSlug } = await import("@/lib/project-slug")
     const updateData: any = {
-      ...(name !== undefined && { name }),
+      ...(name !== undefined && {
+        name,
+        ...(name && { slug: unitNameToMatchSlug(name) || null })
+      }),
       ...(code !== undefined && { code }),
       ...(type !== undefined && { type }),
       ...(isActive !== undefined && { isActive })
