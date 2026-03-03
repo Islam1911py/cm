@@ -4,6 +4,7 @@ import { db } from "@/lib/db"
 import { verifyN8nApiKey, logWebhookEvent } from "@/lib/n8n-auth"
 import { notifyN8nEvent } from "@/lib/n8n-notify"
 import { buildPhoneVariants } from "@/lib/phone"
+import { normalizeArabicNumerals } from "@/lib/project-slug"
 
 type HumanReadable = {
   en?: string
@@ -532,6 +533,19 @@ export async function POST(req: NextRequest) {
           },
           include: { project: true }
         })
+      }
+      // Fallback: أرقام عربية في اسم الوحدة (عمارة ٢ → عمارة 2)
+      if (!unit && project && trimmedUnitName) {
+        const normalizedUnitName = normalizeArabicNumerals(trimmedUnitName)
+        if (normalizedUnitName !== trimmedUnitName) {
+          unit = await db.operationalUnit.findFirst({
+            where: {
+              projectId: project.id,
+              name: { contains: normalizedUnitName, mode: "insensitive" }
+            },
+            include: { project: true }
+          })
+        }
       }
     }
 

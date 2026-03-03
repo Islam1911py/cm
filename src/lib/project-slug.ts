@@ -25,26 +25,144 @@ function toSlugFromStrip(strip: string): string {
  * المشروع قد يكون كومباوند، مشروع، محل، صيدلية، شاطئ، مستشفى، إلخ — نزيل نوع المكان ونطابق الاسم.
  * يستخدمه: الساكن (RESOLVE_UNIT)، الأدمن، المحاسب، مدير المشروع.
  */
+/** تطبيع ه/ة في آخر الكلمة — كرمه وكرمة نفس المطابقة لأسماء الأماكن */
+function normalizeTaMarbuta(s: string): string {
+  return s.replace(/ه\s/g, "ة ").replace(/ه$/u, "ة")
+}
+
+/**
+ * قاعدة ذهبية (Search Engine):
+ * مش كل كلمة شائعة = Type. في فرق بين:
+ * - Type Word (كومباوند، مول، مشروع) → آمنة للإزالة من النص قبل الـ slug.
+ * - Brand Word (سيتي، مارينا، بلازا) → جزء من الاسم؛ نطبّعها فقط ولا نزيلها (تجنب collision: "سيتي ستارز" ≠ "ستارز").
+ *
+ * Level 2 مستقبلاً: Ranking Engine — سيب الاسم كامل واحسب score بدل حذف كلمات كتير.
+ * أداء: كل input بيمر على تطبيع ثم strip (عشرات الـ replace). لما المشاريع تكتر يُفضّل مراجعة (مثلاً خريطة واحدة أو ranking بدل strip كثير).
+ */
+type PlaceTypeGroup = { canonical: string; variants: string[] }
+
+/** Strong Types: آمنة للإزالة — نوع المكان الحقيقي (نُزيل قبل بناء الـ slug). */
+const STRONG_PLACE_TYPE_GROUPS: PlaceTypeGroup[] = [
+  { canonical: "كومباوند", variants: ["كمبوند", "كمبواند", "كامباوند", "كومبوند", "كمباوند", "الكمباوند", "الكمبوند"] },
+  { canonical: "مشروع", variants: ["مشرووع", "مشرورع", "المشروع", "مشاريع"] },
+  { canonical: "محل", variants: ["المحل", "محلات"] },
+  { canonical: "صيدلية", variants: ["صيدليه", "الصيدلية", "صيدليات"] },
+  { canonical: "شاطئ", variants: ["شاطي", "الشاطئ", "شواطئ"] },
+  { canonical: "مستشفى", variants: ["مستشفي", "المستشفى", "مستشفيات"] },
+  { canonical: "بركة", variants: ["بركه", "بركا", "البركة"] },
+  { canonical: "صواري", variants: ["سواري", "الصواري"] },
+  { canonical: "ريسيدنس", variants: ["ريسيدانس", "residence", "الريسيدنس"] },
+  { canonical: "مول", variants: ["المول", "مولات", "مال"] },
+  { canonical: "هايبر", variants: ["هايبرماركت", "هايبر ماركت", "الهايبر", "hyper", "hypermarket"] },
+  { canonical: "سوبر ماركت", variants: ["سوبرماركت", "السوبر ماركت", "سوبر ماركت", "supermarket", "super market"] },
+  { canonical: "فندق", variants: ["الفندق", "فنادق", "هوتيل", "هوتل", "hotel", "hotels"] },
+  { canonical: "مجمع", variants: ["المجمع", "مجمعات"] },
+  { canonical: "قرية", variants: ["القرية", "قرى"] },
+  { canonical: "عقار", variants: ["العقار", "عقارات", "مشروع عقاري"] },
+  { canonical: "اوتلت", variants: ["أوتلت", "اوتلت", "outlet", "outlets", "الاوتلت"] },
+  { canonical: "كلينيك", variants: ["كلينك", "الكلينيك", "عيادة", "العيادة", "عيادات", "clinic", "clinics"] },
+  { canonical: "مركز طبي", variants: ["المركز الطبي", "مراكز طبية", "ميديكال سنتر", "medical center"] },
+  { canonical: "جامعة", variants: ["الجامعة", "جامعات", "university"] },
+  { canonical: "مدرسة", variants: ["المدرسة", "مدارس", "سكول", "school", "schools"] },
+  { canonical: "حضانة", variants: ["الحضانة", "حضانات", "كي جي", "kg", "روضة", "الروضة"] },
+  { canonical: "نادي", variants: ["النادي", "أندية", "اندية", "club", "clubs"] },
+  { canonical: "فيلا", variants: ["الفيلا", "فيلات", "villa", "villas"] },
+  { canonical: "تاون هاوس", variants: ["تاونهاوس", "townhouse", "town house", "التاون هاوس"] },
+  { canonical: "حديقة", variants: ["الحديقة", "حدائق", "بارك", "park", "البارك"] },
+  { canonical: "مصنع", variants: ["المصنع", "مصانع", "فاكتوري", "factory", "factories"] },
+  { canonical: "مكتب", variants: ["المكتب", "مكاتب", "أوفيس", "office", "offices"] }
+]
+
+/** Weak Types: تطبيع فقط — لا تُزال (غالباً جزء من الاسم: سيتي ستارز، برج العرب، مول سيتي سنتر). */
+const WEAK_PLACE_TYPE_GROUPS: PlaceTypeGroup[] = [
+  { canonical: "سنتر", variants: ["سنتير", "السنتر", "سنترز", "center", "centers"] },
+  { canonical: "بلازا", variants: ["البلازا", "plaza", "بلازات"] },
+  { canonical: "ريزورت", variants: ["الريزورت", "ريسورت", "resort", "resorts"] },
+  { canonical: "لاند مارك", variants: ["لاندمارك", "landmark", "landmarks", "اللاند مارك"] },
+  { canonical: "سيتي", variants: ["city", "السيتي"] },
+  { canonical: "مارينا", variants: ["المارينا", "marina"] },
+  { canonical: "كورنيش", variants: ["الكورنيش"] },
+  { canonical: "منطقة", variants: ["المنطقة", "مناطق", "زون", "zone", "الزون"] },
+  { canonical: "برج", variants: ["البرج", "أبراج", "تاور", "tower", "towers"] }
+]
+
+/** كل الأنواع (strong + weak) للتطبيع؛ الـ strip يستخدم strong فقط. */
+const ALL_PLACE_TYPE_GROUPS = [...STRONG_PLACE_TYPE_GROUPS, ...WEAK_PLACE_TYPE_GROUPS]
+
+function buildPlaceAliases(groups: PlaceTypeGroup[]): [RegExp, string][] {
+  const pairs: [RegExp, string][] = []
+  for (const { canonical, variants } of groups) {
+    for (const v of variants) {
+      if (v !== canonical) pairs.push([new RegExp(escapeRe(v), "g"), canonical])
+    }
+  }
+  return pairs
+}
+function escapeRe(s: string): string {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+}
+
+const PLACE_TYPE_ALIASES = buildPlaceAliases(ALL_PLACE_TYPE_GROUPS)
+
+function normalizePlaceTypeAliases(s: string): string {
+  let out = s
+  for (const [re, to] of PLACE_TYPE_ALIASES) {
+    out = out.replace(re, to)
+  }
+  return out
+}
+
+// ─── مرادفات نوع الوحدة (عمارة، مبنى، بلوك…) — نفس الفكرة: زود variants وجرب ───
+const UNIT_TYPE_GROUPS: { canonical: string; variants: string[] }[] = [
+  { canonical: "عمارة", variants: ["عماره", "العمارة", "عمارات"] },
+  { canonical: "مبنى", variants: ["مبني", "المبنى", "مباني"] },
+  { canonical: "بلوك", variants: ["البلوك"] },
+  { canonical: "برج", variants: ["البرج", "أبراج"] },
+  { canonical: "وحدة", variants: ["وحده", "الوحدة", "وحدات"] }
+]
+
+function buildUnitAliases(): [RegExp, string][] {
+  const pairs: [RegExp, string][] = []
+  for (const { canonical, variants } of UNIT_TYPE_GROUPS) {
+    for (const v of variants) {
+      if (v !== canonical) pairs.push([new RegExp(escapeRe(v), "g"), canonical])
+    }
+  }
+  return pairs
+}
+
+const UNIT_TYPE_ALIASES = buildUnitAliases()
+
+function normalizeUnitTypeAliases(s: string): string {
+  let out = s
+  for (const [re, to] of UNIT_TYPE_ALIASES) {
+    out = out.replace(re, to)
+  }
+  return out
+}
+
+/** أرقام عربية/فارسية → لاتينية (عمارة ٢ = عمارة 2) — مُصدَّر لاستخدامه في ويب هوك التذاكر */
+export function normalizeArabicNumerals(s: string): string {
+  return s
+    .replace(/[\u0660-\u0669]/g, (c) => String(c.charCodeAt(0) - 0x0660 + 0x30))
+    .replace(/[\u06f0-\u06f9]/g, (c) => String(c.charCodeAt(0) - 0x06f0 + 0x30))
+}
+
+/** يُزال نوع المكان من النص قبل الـ slug — Strong Types فقط (Weak تبقى في الاسم). */
+function stripPlaceTypes(s: string): string {
+  let out = s.replace(/^ال(?=\p{L})/u, "")
+  for (const { canonical } of STRONG_PLACE_TYPE_GROUPS) {
+    const c = escapeRe(canonical)
+    out = out.replace(new RegExp(c + "\\s*", "g"), "").replace(new RegExp("ال" + c + "\\s*", "g"), "")
+  }
+  return out.replace(/\s+/g, " ").trim()
+}
+
 export function projectNameToMatchSlug(name: string): string {
   const t = name.trim().toLowerCase()
-  const strip = t
-    .replace(/^ال(?=\p{L})/u, "")
-    .replace(/كومباوند\s*/g, "")
-    .replace(/مشروع\s*/g, "")
-    .replace(/محل\s*/g, "")
-    .replace(/صيدلية\s*/g, "")
-    .replace(/شاطئ\s*/g, "")
-    .replace(/مستشفى\s*/g, "")
-    .replace(/مستشفي\s*/g, "")
-    .replace(/الكومباوند\s*/g, "")
-    .replace(/المشروع\s*/g, "")
-    .replace(/المحل\s*/g, "")
-    .replace(/الصيدلية\s*/g, "")
-    .replace(/الشاطئ\s*/g, "")
-    .replace(/المستشفى\s*/g, "")
-    .replace(/المستشفي\s*/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
+  const withAliases = normalizePlaceTypeAliases(t)
+  const afterTaMarbuta = normalizeTaMarbuta(withAliases)
+  const strip = stripPlaceTypes(afterTaMarbuta)
   return toSlugFromStrip(strip)
 }
 
@@ -68,13 +186,28 @@ export async function findProjectBySlugOrName(
     if (bySlug) return bySlug
   }
 
-  // المرحلة 2: fallback name contains
+  // المرحلة 2: fallback name contains (مع تطبيع كرمه→كرمة)
   if (rawInput) {
     const byName = await db.project.findFirst({
       where: { name: { contains: rawInput, mode: "insensitive" } },
       select: { id: true, name: true, slug: true }
     })
     if (byName) return byName
+    const normalizedName = normalizeTaMarbuta(rawInput)
+    if (normalizedName !== rawInput) {
+      const byNorm = await db.project.findFirst({
+        where: { name: { contains: normalizedName, mode: "insensitive" } },
+        select: { id: true, name: true, slug: true }
+      })
+      if (byNorm) return byNorm
+    }
+  }
+
+  // المرحلة 3: مطابقة بالـ slug المحسوب من الاسم — عشان "Karma" يطابق مشروع "كرمة" حتى لو slug في الداتا null أو الاسم عربي
+  if (inputSlug) {
+    const all = await db.project.findMany({ select: { id: true, name: true, slug: true } })
+    const byComputedSlug = all.find((p) => projectNameToMatchSlug(p.name) === inputSlug)
+    if (byComputedSlug) return byComputedSlug
   }
 
   return null
@@ -87,19 +220,74 @@ export function projectSlugForCreate(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "") || "project"
 }
 
+/** مسافة التحرير بين slugين — للمطابقة المرنة (كارما/كرمة، بركة/بركا). */
+export function slugLevenshtein(a: string, b: string): number {
+  const na = a.length
+  const nb = b.length
+  const d: number[][] = Array(na + 1)
+    .fill(null)
+    .map(() => Array(nb + 1).fill(0))
+  for (let i = 0; i <= na; i++) d[i][0] = i
+  for (let j = 0; j <= nb; j++) d[0][j] = j
+  for (let i = 1; i <= na; i++) {
+    for (let j = 1; j <= nb; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + cost)
+    }
+  }
+  return d[na][nb]
+}
+
+/** مشاريع قريبة من الاسم (slug شبيه) — للعرض كخيارات أو تأكيد واحد. */
+export async function findCloseProjects(
+  db: PrismaClient,
+  projectName: string,
+  maxCandidates: number = 3,
+  maxDistance: number = 2
+): Promise<{ id: string; name: string; slug: string }[]> {
+  const inputSlug = projectNameToMatchSlug(projectName)
+  if (!inputSlug) return []
+  const all = await db.project.findMany({
+    where: { slug: { not: null } },
+    select: { id: true, name: true, slug: true }
+  })
+  const withDistance = all
+    .filter((p): p is { id: string; name: string; slug: string } => p.slug != null)
+    .map((p) => ({ ...p, distance: slugLevenshtein(inputSlug, p.slug!) }))
+    .filter((p) => p.distance <= maxDistance || p.slug!.includes(inputSlug) || inputSlug.includes(p.slug!))
+  withDistance.sort((a, b) => a.distance - b.distance)
+  return withDistance.slice(0, maxCandidates).map(({ distance: _d, ...rest }) => rest)
+}
+
+/** وحدات المشروع للعرض: "احنا بنغطي عمارة 1، 2، 3". */
+export async function getUnitsForProject(
+  db: PrismaClient,
+  projectId: string
+): Promise<{ id: string; code: string; name: string | null }[]> {
+  return db.operationalUnit.findMany({
+    where: { projectId },
+    select: { id: true, code: true, name: true },
+    orderBy: [{ code: "asc" }, { name: "asc" }]
+  })
+}
+
 // —— وحدة (slug داخل المشروع فقط، ليس فريداً globally) ——
+
+/** يُزال أنواع الوحدات من النص قبل بناء الـ slug — من UNIT_TYPE_GROUPS. */
+function stripUnitTypes(s: string): string {
+  let out = s
+  for (const { canonical } of UNIT_TYPE_GROUPS) {
+    const c = escapeRe(canonical)
+    out = out.replace(new RegExp(c + "\\s*", "g"), "").replace(new RegExp("ال" + c + "\\s*", "g"), "")
+  }
+  return out.replace(/\s+/g, " ").trim()
+}
 
 /** تطبيع اسم الوحدة للبحث (عمارة ١، مبنى 5، بلوك أ) — داخل المشروع فقط. */
 export function unitNameToMatchSlug(name: string): string {
   const t = name.trim().toLowerCase()
-  const strip = t
-    .replace(/عمارة\s*/g, "")
-    .replace(/مبنى\s*/g, "")
-    .replace(/بلوك\s*/g, "")
-    .replace(/برج\s*/g, "")
-    .replace(/وحدة\s*/g, "")
-    .replace(/\s+/g, " ")
-    .trim()
+  const withUnitAliases = normalizeUnitTypeAliases(t)
+  const strip = stripUnitTypes(withUnitAliases)
   return toSlugFromStrip(strip)
 }
 
@@ -123,6 +311,12 @@ export async function findUnitBySlugOrName(
       select: { id: true, code: true, name: true, projectId: true }
     })
     if (bySlug) return bySlug
+    // عمارة ٢ → slug "2"؛ لو الوحدة مسجّلة بالكود "2" فقط (والاسم مختلف أو slug فاضي) نطابق بالكود
+    const byCode = await db.operationalUnit.findFirst({
+      where: { ...base, code: { equals: inputSlug, mode: "insensitive" } },
+      select: { id: true, code: true, name: true, projectId: true }
+    })
+    if (byCode) return byCode
   }
 
   if (rawInput) {
@@ -131,6 +325,14 @@ export async function findUnitBySlugOrName(
       select: { id: true, code: true, name: true, projectId: true }
     })
     if (byName) return byName
+    const normalized = normalizeArabicNumerals(rawInput)
+    if (normalized !== rawInput) {
+      const byNorm = await db.operationalUnit.findFirst({
+        where: { ...base, name: { contains: normalized, mode: "insensitive" } },
+        select: { id: true, code: true, name: true, projectId: true }
+      })
+      if (byNorm) return byNorm
+    }
   }
 
   return null
