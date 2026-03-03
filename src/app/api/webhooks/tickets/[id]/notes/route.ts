@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { verifyN8nApiKey, logWebhookEvent } from "@/lib/n8n-auth"
+import { WEBHOOK_ALWAYS_OK } from "@/lib/webhook-response"
 
 // POST /api/webhooks/tickets/[id]/notes - إضافة ملاحظات على الشكاوى
 export async function POST(
@@ -17,8 +18,8 @@ export async function POST(
     const auth = await verifyN8nApiKey(req)
     if (!auth.valid || !auth.context) {
       return NextResponse.json(
-        { error: auth.error || "Unauthorized" },
-        { status: 401 }
+        { success: false, error: auth.error || "Unauthorized", humanReadable: { ar: "مفتاح غير صالح أو غير مصرح. تحقق من المفتاح." } },
+        { status: WEBHOOK_ALWAYS_OK }
       )
     }
 
@@ -26,8 +27,8 @@ export async function POST(
 
     if (!note) {
       return NextResponse.json(
-        { error: "Note is required" },
-        { status: 400 }
+        { success: false, error: "Note is required", humanReadable: { ar: "مطلوب: note (نص الملاحظة) في الـ body." } },
+        { status: WEBHOOK_ALWAYS_OK }
       )
     }
 
@@ -39,8 +40,8 @@ export async function POST(
 
     if (!ticket) {
       return NextResponse.json(
-        { error: "Ticket not found" },
-        { status: 404 }
+        { success: false, error: "Ticket not found", humanReadable: { ar: "التذكرة غير موجودة. تحقق من المعرف في الرابط." } },
+        { status: WEBHOOK_ALWAYS_OK }
       )
     }
 
@@ -78,13 +79,13 @@ export async function POST(
       ipAddress
     )
 
-    return NextResponse.json(response)
+    return NextResponse.json(response, { status: WEBHOOK_ALWAYS_OK })
   } catch (error) {
     console.error("Error adding note:", error)
 
     return NextResponse.json(
-      { error: "Failed to add note" },
-      { status: 500 }
+      { success: false, error: "Failed to add note", humanReadable: { ar: "حدث خطأ أثناء إضافة الملاحظة. جرّب مرة أخرى." } },
+      { status: WEBHOOK_ALWAYS_OK }
     )
   }
 }

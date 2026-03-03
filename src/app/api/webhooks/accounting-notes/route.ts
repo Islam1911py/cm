@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { verifyN8nApiKey, logWebhookEvent } from "@/lib/n8n-auth"
 import { buildPhoneVariants } from "@/lib/phone"
+import { WEBHOOK_ALWAYS_OK } from "@/lib/webhook-response"
 
 function buildWhatsappMessage(options: {
   projectName: string
@@ -56,8 +57,8 @@ export async function POST(req: NextRequest) {
     const auth = await verifyN8nApiKey(req)
     if (!auth.valid || !auth.context) {
       return NextResponse.json(
-        { error: auth.error || "Unauthorized" },
-        { status: 401 }
+        { success: false, error: auth.error || "Unauthorized", humanReadable: { ar: "مفتاح غير صالح أو غير مصرح. تحقق من المفتاح." } },
+        { status: WEBHOOK_ALWAYS_OK }
       )
     }
 
@@ -81,8 +82,8 @@ export async function POST(req: NextRequest) {
       )
 
       return NextResponse.json(
-        { error: "Insufficient permissions" },
-        { status: 403 }
+        { success: false, error: "Insufficient permissions", humanReadable: { ar: "هذا الطلب لمدير المشروع أو الأدمن فقط." } },
+        { status: WEBHOOK_ALWAYS_OK }
       )
     }
 
@@ -91,18 +92,16 @@ export async function POST(req: NextRequest) {
 
     if (!unitId || !description || amount === undefined || amount === null) {
       return NextResponse.json(
-        {
-          error: "Missing required fields: unitId, description, amount"
-        },
-        { status: 400 }
+        { success: false, error: "Missing required fields: unitId, description, amount", humanReadable: { ar: "مطلوب: unitId و description و amount في الـ body." } },
+        { status: WEBHOOK_ALWAYS_OK }
       )
     }
 
     const parsedAmount = Number(amount)
     if (Number.isNaN(parsedAmount) || !Number.isFinite(parsedAmount) || parsedAmount <= 0) {
       return NextResponse.json(
-        { error: "Amount must be a positive number" },
-        { status: 400 }
+        { success: false, error: "Amount must be a positive number", humanReadable: { ar: "المبلغ يجب أن يكون رقماً موجباً." } },
+        { status: WEBHOOK_ALWAYS_OK }
       )
     }
 
@@ -116,16 +115,16 @@ export async function POST(req: NextRequest) {
 
     if (!unit) {
       return NextResponse.json(
-        { error: "Unit not found" },
-        { status: 404 }
+        { success: false, error: "Unit not found", humanReadable: { ar: "الوحدة غير موجودة. تحقق من unitId." } },
+        { status: WEBHOOK_ALWAYS_OK }
       )
     }
 
     // If the API key is scoped to a project, enforce it matches the unit
     if (context.projectId && context.projectId !== unit.projectId) {
       return NextResponse.json(
-        { error: "This API key is not allowed to access this project" },
-        { status: 403 }
+        { success: false, error: "This API key is not allowed to access this project", humanReadable: { ar: "مفتاح الـ API غير مسموح له بهذا المشروع." } },
+        { status: WEBHOOK_ALWAYS_OK }
       )
     }
 
@@ -196,8 +195,8 @@ export async function POST(req: NextRequest) {
 
     if (!creatorUser) {
       return NextResponse.json(
-        { error: "No eligible user found to own this note" },
-        { status: 403 }
+        { success: false, error: "No eligible user found to own this note", humanReadable: { ar: "لم يُعثر على مستخدم مؤهل لإنشاء الملاحظة. تحقق من pmPhone أو createdByUserId." } },
+        { status: WEBHOOK_ALWAYS_OK }
       )
     }
 
@@ -207,8 +206,8 @@ export async function POST(req: NextRequest) {
       !creatorUser.assignedProjects.some(ap => ap.projectId === unit.projectId)
     ) {
       return NextResponse.json(
-        { error: "Project Manager is not assigned to this project" },
-        { status: 403 }
+        { success: false, error: "Project Manager is not assigned to this project", humanReadable: { ar: "مدير المشروع غير معيّن لهذا المشروع." } },
+        { status: WEBHOOK_ALWAYS_OK }
       )
     }
 
@@ -276,7 +275,7 @@ export async function POST(req: NextRequest) {
       ipAddress
     )
 
-    return NextResponse.json(response, { status: 201 })
+    return NextResponse.json(response, { status: WEBHOOK_ALWAYS_OK })
   } catch (error) {
     console.error("Error creating accounting note:", error)
 
@@ -296,8 +295,8 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json(
-      { error: "Failed to create accounting note" },
-      { status: 500 }
+      { success: false, error: "Failed to create accounting note", humanReadable: { ar: "حدث خطأ أثناء إنشاء الملاحظة المحاسبية. جرّب مرة أخرى." } },
+      { status: WEBHOOK_ALWAYS_OK }
     )
   }
 }

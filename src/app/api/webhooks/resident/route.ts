@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from "next/server"
 import { verifyN8nApiKey } from "@/lib/n8n-auth"
 import { resolveUnit } from "@/lib/resolve-unit"
-import { webhookHttpStatus } from "@/lib/webhook-response"
+import { createTicketFromWebhook } from "@/lib/ticket-create"
+import { createDeliveryOrderFromWebhook } from "@/lib/delivery-order-webhook"
+import { runIdentityLogic } from "@/lib/identity-webhook"
+import { getTicketsFromWebhook } from "@/lib/tickets-query"
+import { WEBHOOK_ALWAYS_OK, botFail } from "@/lib/webhook-response"
 
 /**
  * أداة موحّدة لعمليات الساكن والهوية.
@@ -95,16 +99,6 @@ const ACTIONS_DEFINITION = [
 
 type ActionType = (typeof ACTIONS_DEFINITION)[number]["action"]
 
-function getOrigin(req: NextRequest): string {
-  try {
-    const u = new URL(req.url)
-    if (u.origin && u.origin !== "null") return u.origin
-  } catch {}
-  const base = process.env.NEXT_PUBLIC_APP_URL || process.env.VERCEL_URL
-  if (base) return base.startsWith("http") ? base : `https://${base}`
-  return "http://localhost:3000"
-}
-
 export async function GET() {
   return NextResponse.json({
     tool: "resident",
@@ -117,18 +111,10 @@ export async function GET() {
 
 export async function POST(req: NextRequest) {
   const ipAddress = req.headers.get("x-forwarded-for") || "unknown"
-  const apiKey = req.headers.get("x-api-key") || ""
-  const origin = getOrigin(req)
 
   try {
     const body = await req.json().catch(() => ({}))
     const action = (body?.action ?? "").trim().toUpperCase() as ActionType
-
-    const headers: Record<string, string> = {
-      "content-type": "application/json",
-      "x-api-key": apiKey,
-      "x-forwarded-for": ipAddress
-    }
 
     if (!action) {
       return NextResponse.json(
@@ -138,7 +124,7 @@ export async function POST(req: NextRequest) {
           humanReadable: { ar: "أرسل action في الـ payload. استدعِ GET على نفس الرابط لرؤية البرومبت والـ actions." },
           actions: ACTIONS_DEFINITION.map((a) => a.action)
         },
-        { status: webhookHttpStatus(400) }
+        { status: WEBHOOK_ALWAYS_OK }
       )
     }
 
@@ -151,88 +137,86 @@ export async function POST(req: NextRequest) {
           humanReadable: { ar: `القيمة ${action} غير صحيحة. القيم المسموحة: ${validActions.join(", ")}.` },
           actions: validActions
         },
-        { status: webhookHttpStatus(400) }
+        { status: WEBHOOK_ALWAYS_OK }
       )
     }
 
-    let targetUrl: string
-    let method: "GET" | "POST" = "POST"
-    let fetchBody: string | undefined
+    const auth = await verifyN8nApiKey(req)
+    if (!auth.valid || !auth.context) {
+      return NextResponse.json(
+        botFail("مفتاح غير صالح أو غير مصرح. تحقق من المفتاح.", "UNAUTHORIZED"),
+        { status: WEBHOOK_ALWAYS_OK }
+      )
+    }
 
     if (action === "IDENTITY") {
-      targetUrl = `${origin}/api/webhooks/identity`
-      method = "POST"
-      fetchBody = JSON.stringify({
-        phone: body.phone ?? body.senderPhone ?? body.contact ?? body.query
-      })
-    } else if (action === "TICKET_LIST") {
-      const residentPhone = body.residentPhone ?? body.phone
-      targetUrl = `${origin}/api/webhooks/tickets?residentPhone=${encodeURIComponent(residentPhone ?? "")}`
-      method = "GET"
-    } else if (action === "TICKET_GET") {
-      const residentPhone = body.residentPhone ?? body.phone
-      const ticketNumber = body.ticketNumber ?? body.ticket_number ?? body.number
-      const params = new URLSearchParams()
-      if (residentPhone) params.set("residentPhone", residentPhone)
-      if (ticketNumber) params.set("ticketNumber", ticketNumber)
-      targetUrl = `${origin}/api/webhooks/tickets?${params.toString()}`
-      method = "GET"
-    } else if (action === "TICKET_CREATE") {
-      targetUrl = `${origin}/api/webhooks/tickets`
-      method = "POST"
-      fetchBody = JSON.stringify({
-        residentName: body.residentName,
-        residentEmail: body.residentEmail,
-        residentPhone: body.residentPhone,
-        senderPhone: body.senderPhone,
-        unitCode: body.unitCode,
-        unitName: body.unitName,
-        buildingNumber: body.buildingNumber,
-        projectName: body.projectName,
-        title: body.title,
-        description: body.description,
-        priority: body.priority
-      })
-    } else if (action === "RESOLVE_UNIT") {
-      // Run resolve-unit logic inline to avoid internal fetch (500 on serverless)
-      const auth = await verifyN8nApiKey(req)
-      if (!auth.valid || !auth.context) {
-        return NextResponse.json({ error: auth.error || "Unauthorized" }, { status: 401 })
-      }
-      if (auth.context.role !== "RESIDENT") {
+      const input = String(body?.phone ?? body?.senderPhone ?? body?.contact ?? body?.query ?? "").trim()
+      if (!input) {
         return NextResponse.json(
-          { success: false, error: "Only resident context can resolve unit", humanReadable: { ar: "هذا الطلب للسكان فقط." } },
-          { status: webhookHttpStatus(403) }
+          botFail("أرسل رقم الهاتف المطلوب التعرف عليه (phone أو senderPhone أو contact أو query).", "MISSING_PHONE"),
+          { status: WEBHOOK_ALWAYS_OK }
         )
       }
+      const data = await runIdentityLogic(input, auth.context, ipAddress, body as Record<string, unknown>)
+      return NextResponse.json(data, { status: WEBHOOK_ALWAYS_OK })
+    }
+
+    if (auth.context.role !== "RESIDENT") {
+      return NextResponse.json(
+        botFail("هذا الطلب للسكان فقط. استخدم مفتاح ساكن.", "RESIDENT_ONLY"),
+        { status: WEBHOOK_ALWAYS_OK }
+      )
+    }
+
+    if (action === "TICKET_LIST") {
+      const residentPhone = String(body?.residentPhone ?? body?.phone ?? "").trim()
+      if (!residentPhone) {
+        return NextResponse.json(
+          botFail("مطلوب: residentPhone (رقم واتساب الساكن).", "MISSING_RESIDENT_PHONE"),
+          { status: WEBHOOK_ALWAYS_OK }
+        )
+      }
+      const data = await getTicketsFromWebhook({ residentPhone }, auth.context, ipAddress)
+      return NextResponse.json(data, { status: WEBHOOK_ALWAYS_OK })
+    }
+
+    if (action === "TICKET_GET") {
+      const residentPhone = String(body?.residentPhone ?? body?.phone ?? "").trim()
+      const ticketNumber = body?.ticketNumber ?? body?.ticket_number ?? body?.number ?? null
+      if (!residentPhone) {
+        return NextResponse.json(
+          botFail("مطلوب: residentPhone ورقم الشكوى (ticketNumber).", "MISSING_RESIDENT_PHONE"),
+          { status: WEBHOOK_ALWAYS_OK }
+        )
+      }
+      const data = await getTicketsFromWebhook({ residentPhone, ticketNumber }, auth.context, ipAddress)
+      return NextResponse.json(data, { status: WEBHOOK_ALWAYS_OK })
+    }
+
+    if (action === "TICKET_CREATE") {
+      const result = await createTicketFromWebhook(body, auth.context, ipAddress)
+      return NextResponse.json(result.data, { status: WEBHOOK_ALWAYS_OK })
+    }
+
+    if (action === "RESOLVE_UNIT") {
       const result = await resolveUnit({
         projectName: body.projectName,
         unitName: body.unitName,
         unitCode: body.unitCode,
         buildingNumber: body.buildingNumber
       })
-      return NextResponse.json(result.data, { status: webhookHttpStatus(result.status) })
-    } else {
-      targetUrl = `${origin}/api/webhooks/delivery-orders`
-      method = "POST"
-      fetchBody = JSON.stringify({
-        residentPhone: body.residentPhone,
-        residentName: body.residentName,
-        unitCode: body.unitCode,
-        description: body.description ?? body.orderText,
-        orderText: body.orderText ?? body.description,
-        projectId: body.projectId
-      })
+      return NextResponse.json(result.data, { status: WEBHOOK_ALWAYS_OK })
     }
 
-    const res = await fetch(targetUrl, {
-      method,
-      headers,
-      ...(fetchBody && { body: fetchBody })
-    })
+    if (action === "DELIVERY_ORDER") {
+      const data = await createDeliveryOrderFromWebhook(body as Record<string, unknown>, auth.context, ipAddress)
+      return NextResponse.json(data, { status: WEBHOOK_ALWAYS_OK })
+    }
 
-    const data = await res.json().catch(() => ({ error: "Invalid JSON from upstream" }))
-    return NextResponse.json(data, { status: webhookHttpStatus(res.status) })
+    return NextResponse.json(
+      botFail(`أكشن غير متوقع: ${action}`, "UNKNOWN_ACTION"),
+      { status: WEBHOOK_ALWAYS_OK }
+    )
   } catch (error) {
     console.error("RESIDENT_TOOL_ERROR", error)
     return NextResponse.json(
@@ -241,7 +225,7 @@ export async function POST(req: NextRequest) {
         error: "Failed to run resident tool",
         humanReadable: { ar: "حدث خطأ أثناء تنفيذ الطلب." }
       },
-      { status: 500 }
+      { status: WEBHOOK_ALWAYS_OK }
     )
   }
 }

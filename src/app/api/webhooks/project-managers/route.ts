@@ -12,7 +12,7 @@ import {
 } from "@/lib/expense-search"
 import { verifyN8nApiKey, logWebhookEvent } from "@/lib/n8n-auth"
 import { buildPhoneVariants } from "@/lib/phone"
-import { webhookHttpStatus } from "@/lib/webhook-response"
+import { WEBHOOK_ALWAYS_OK, webhookHttpStatus, botFail } from "@/lib/webhook-response"
 
 const ENDPOINT = "/api/webhooks/project-managers"
 
@@ -2718,12 +2718,22 @@ export async function POST(req: NextRequest) {
   try {
     requestBody = await req.json()
   } catch (error) {
-    return NextResponse.json({ error: "Invalid JSON body" }, { status: webhookHttpStatus(400) })
+    return NextResponse.json(
+      botFail("أرسل body بصيغة JSON صحيحة. تحقق من الترميز والأقواس.", "INVALID_JSON", {
+        suggestions: ["تأكد إن الـ body مظبوط JSON", "مفيش فاصلة زايدة أو قوس ناقص"]
+      }),
+      { status: WEBHOOK_ALWAYS_OK }
+    )
   }
 
   const auth = await verifyN8nApiKey(req)
   if (!auth.valid || !auth.context) {
-    return NextResponse.json({ error: auth.error || "Unauthorized" }, { status: 401 })
+    return NextResponse.json(
+      botFail("مفتاح الـ API غير صالح أو غير مصرح. تحقق من المفتاح في إعدادات n8n.", "UNAUTHORIZED", {
+        suggestions: ["راجع المفتاح في n8n", "تأكد إن الرقم/المفتاح مسجّل للقناة"]
+      }),
+      { status: WEBHOOK_ALWAYS_OK }
+    )
   }
 
   if (auth.context.role !== "PROJECT_MANAGER" && auth.context.role !== "ADMIN") {
@@ -2739,7 +2749,12 @@ export async function POST(req: NextRequest) {
       ipAddress
     )
 
-    return NextResponse.json({ error: "Forbidden" }, { status: webhookHttpStatus(403) })
+    return NextResponse.json(
+      botFail("هذا الطلب لمدير المشروع أو الأدمن فقط. استخدم مفتاحاً مرتبطاً بمدير مشروع أو أدمن.", "FORBIDDEN", {
+        suggestions: ["استخدم مفتاح قناة المدير أو الأدمن", "راجع لوحة جهات الاتصال"]
+      }),
+      { status: WEBHOOK_ALWAYS_OK }
+    )
   }
 
   const action = requestBody?.action
@@ -2747,11 +2762,21 @@ export async function POST(req: NextRequest) {
   const payload = requestBody?.payload ?? {}
 
   if (!action || !ALLOWED_ACTIONS.includes(action as AllowedAction)) {
-    return NextResponse.json({ error: "Unsupported action" }, { status: webhookHttpStatus(400) })
+    return NextResponse.json(
+      botFail(`أكشن غير مدعوم. القيم المسموحة: ${ALLOWED_ACTIONS.slice(0, 5).join(", ")} وغيرها. أرسل action من القائمة.`, "UNSUPPORTED_ACTION", {
+        suggestions: ["راجع قائمة الأكشنز في البرومبت", "استخدم اسم الأكشن بالظبط"]
+      }),
+      { status: WEBHOOK_ALWAYS_OK }
+    )
   }
 
   if (!senderPhone) {
-    return NextResponse.json({ error: "senderPhone is required" }, { status: webhookHttpStatus(400) })
+    return NextResponse.json(
+      botFail("مطلوب: senderPhone (رقم واتساب المدير) داخل الـ payload أو في جذر الطلب.", "MISSING_SENDER_PHONE", {
+        suggestions: ["ضيف senderPhone من identity (رقم المدير)", "الرقم اللي بيتكلم منه واتساب"]
+      }),
+      { status: WEBHOOK_ALWAYS_OK }
+    )
   }
 
   const manager = await resolveProjectManager(senderPhone)
@@ -2770,8 +2795,10 @@ export async function POST(req: NextRequest) {
     )
 
     return NextResponse.json(
-      { error: "Project manager not found for sender phone" },
-      { status: webhookHttpStatus(404) }
+      botFail("رقم الواتساب غير مرتبط بمدير مشروع. تحقق من الرقم في لوحة جهات الاتصال (PM Contacts) أو أضف المدير أولاً.", "PM_NOT_FOUND", {
+        suggestions: ["راجع لوحة PM Contacts", "تأكد إن الرقم مسجّل كمدير مشروع"]
+      }),
+      { status: WEBHOOK_ALWAYS_OK }
     )
   }
 
@@ -2788,7 +2815,9 @@ export async function POST(req: NextRequest) {
     console.error("Project manager webhook error:", error)
     response = {
       status: 500,
-      body: { success: false, error: "Internal server error" }
+      body: botFail("حدث خطأ أثناء تنفيذ الطلب. جرّب مرة أخرى أو تحقق من البيانات المرسلة.", "INTERNAL_ERROR", {
+        suggestions: ["أعد الطلب بعد شوية", "تأكد من projectId و unitCode والبيانات المطلوبة"]
+      })
     }
   }
 
@@ -2839,5 +2868,5 @@ export async function POST(req: NextRequest) {
     ipAddress
   )
 
-  return NextResponse.json(enrichedBody, { status: webhookHttpStatus(response.status) })
+  return NextResponse.json(enrichedBody, { status: WEBHOOK_ALWAYS_OK })
 }

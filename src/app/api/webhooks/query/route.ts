@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { verifyN8nApiKey, logWebhookEvent } from "@/lib/n8n-auth"
 import { buildPhoneVariants } from "@/lib/phone"
+import { WEBHOOK_ALWAYS_OK } from "@/lib/webhook-response"
 
 type HumanReadable = {
   en?: string
@@ -94,8 +95,8 @@ export async function GET(req: NextRequest) {
     const auth = await verifyN8nApiKey(req)
     if (!auth.valid || !auth.context) {
       return NextResponse.json(
-        { error: auth.error || "Unauthorized" },
-        { status: 401 }
+        { success: false, error: auth.error || "Unauthorized", humanReadable: { ar: "مفتاح غير صالح أو غير مصرح. تحقق من المفتاح." } },
+        { status: WEBHOOK_ALWAYS_OK }
       )
     }
 
@@ -143,8 +144,8 @@ export async function GET(req: NextRequest) {
 
       if (!requestingUser) {
         return NextResponse.json(
-          { error: "Unauthorized sender phone" },
-          { status: 403 }
+          { success: false, error: "Unauthorized sender phone", humanReadable: { ar: "رقم المرسل غير مرتبط بمستخدم. تحقق من senderPhone في الـ query." } },
+          { status: WEBHOOK_ALWAYS_OK }
         )
       }
 
@@ -191,12 +192,14 @@ export async function GET(req: NextRequest) {
           if (!resolvedProjectId) {
             return NextResponse.json(
               {
+                success: false,
                 error: "Project not found for provided name",
                 requestedName: projectNameParam,
                 canViewAllProjects: requestingUser.canViewAllProjects,
-                assignedProjects
+                assignedProjects,
+                humanReadable: { ar: "المشروع غير موجود للاسم المرسل. تحقق من projectName أو اختر مشروعاً من assignedProjects." }
               },
-              { status: 404 }
+              { status: WEBHOOK_ALWAYS_OK }
             )
           }
         }
@@ -223,8 +226,8 @@ export async function GET(req: NextRequest) {
           )
         ) {
           return NextResponse.json(
-            { error: "Project Manager is not assigned to this project" },
-            { status: 403 }
+            { success: false, error: "Project Manager is not assigned to this project", humanReadable: { ar: "مدير المشروع غير معيّن لهذا المشروع. اختر projectId من assignedProjects." } },
+            { status: WEBHOOK_ALWAYS_OK }
           )
         }
       }
@@ -441,8 +444,8 @@ export async function GET(req: NextRequest) {
 
       if (!projectId) {
         return NextResponse.json(
-          { error: "Project ID is required for PROJECT_MANAGER" },
-          { status: 400 }
+          { success: false, error: "Project ID is required for PROJECT_MANAGER", humanReadable: { ar: "مدير المشروع يحتاج projectId أو projectName في الـ query." } },
+          { status: WEBHOOK_ALWAYS_OK }
         )
       }
 
@@ -714,10 +717,12 @@ export async function GET(req: NextRequest) {
         if (!residentInput) {
           return NextResponse.json(
             {
+              success: false,
               error: "Missing resident identifier",
-              hint: "Provide resident name or phone"
+              hint: "Provide resident name or phone",
+              humanReadable: { ar: "مطلوب: معرّف الساكن (resident) — اسم أو رقم في query." }
             },
-            { status: 400 }
+            { status: WEBHOOK_ALWAYS_OK }
           )
         }
 
@@ -1033,8 +1038,8 @@ export async function GET(req: NextRequest) {
     }
 
     return NextResponse.json(
-      { error: "Failed to execute query" },
-      { status: 500 }
+      { success: false, error: "Failed to execute query", humanReadable: { ar: "حدث خطأ أثناء تنفيذ الاستعلام. جرّب مرة أخرى." } },
+      { status: WEBHOOK_ALWAYS_OK }
     )
   }
 }

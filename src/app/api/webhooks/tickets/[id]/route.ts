@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 import { db } from "@/lib/db"
 import { verifyN8nApiKey, logWebhookEvent } from "@/lib/n8n-auth"
 import { notifyN8nEvent } from "@/lib/n8n-notify"
+import { WEBHOOK_ALWAYS_OK } from "@/lib/webhook-response"
 
 type HumanReadable = {
   en?: string
@@ -69,7 +70,7 @@ export async function PUT(
             }
           ]
         },
-        { status: 401 }
+        { status: WEBHOOK_ALWAYS_OK }
       )
     }
 
@@ -105,7 +106,7 @@ export async function PUT(
             }
           ]
         },
-        { status: 403 }
+        { status: WEBHOOK_ALWAYS_OK }
       )
     }
 
@@ -150,7 +151,7 @@ export async function PUT(
             }
           ]
         },
-        { status: 404 }
+        { status: WEBHOOK_ALWAYS_OK }
       )
     }
 
@@ -354,7 +355,7 @@ export async function PUT(
           }
         ]
       },
-      { status: 500 }
+      { status: WEBHOOK_ALWAYS_OK }
     )
   }
 }
@@ -384,7 +385,7 @@ export async function GET(
             }
           ]
         },
-        { status: 401 }
+        { status: WEBHOOK_ALWAYS_OK }
       )
     }
 
@@ -418,7 +419,7 @@ export async function GET(
             }
           ]
         },
-        { status: 404 }
+        { status: WEBHOOK_ALWAYS_OK }
       )
     }
 
@@ -456,7 +457,7 @@ export async function GET(
           }
         ]
       },
-      { status: 500 }
+      { status: WEBHOOK_ALWAYS_OK }
     )
   }
 }

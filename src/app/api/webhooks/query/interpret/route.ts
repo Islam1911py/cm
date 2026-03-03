@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server"
 
 import { db } from "@/lib/db"
 import { verifyN8nApiKey, logWebhookEvent } from "@/lib/n8n-auth"
+import { WEBHOOK_ALWAYS_OK } from "@/lib/webhook-response"
 
 const TICKET_KEYWORDS = [
   "شكوى",
@@ -1297,7 +1298,10 @@ export async function POST(req: NextRequest) {
     const auth = await verifyN8nApiKey(req)
 
     if (!auth.valid || !auth.context) {
-      return NextResponse.json({ error: auth.error || "Unauthorized" }, { status: 401 })
+      return NextResponse.json(
+        { success: false, error: auth.error || "Unauthorized", humanReadable: { ar: "مفتاح غير صالح أو غير مصرح. تحقق من المفتاح." } },
+        { status: WEBHOOK_ALWAYS_OK }
+      )
     }
 
     const question = String(body?.question ?? "").trim()
@@ -1313,7 +1317,7 @@ export async function POST(req: NextRequest) {
             en: "Provide a natural-language question to interpret.",
             ar: "من فضلك أرسل السؤال الطبيعي المطلوب تحويله." }
         },
-        { status: 400 }
+        { status: WEBHOOK_ALWAYS_OK }
       )
     }
 
@@ -1658,9 +1662,10 @@ export async function POST(req: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: "Failed to interpret question"
+        error: "Failed to interpret question",
+        humanReadable: { ar: "حدث خطأ أثناء تفسير السؤال. جرّب صياغة أوضح أو أعد المحاولة." }
       },
-      { status: 500 }
+      { status: WEBHOOK_ALWAYS_OK }
     )
   }
 }

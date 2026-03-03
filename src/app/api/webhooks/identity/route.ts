@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { verifyN8nApiKey, logWebhookEvent } from "@/lib/n8n-auth"
-import { identifyContactByPhone } from "@/lib/identity-by-phone"
+import { runIdentityLogic } from "@/lib/identity-webhook"
+import { WEBHOOK_ALWAYS_OK } from "@/lib/webhook-response"
 
 export async function POST(req: NextRequest) {
   const ipAddress = req.headers.get("x-forwarded-for") || "unknown"
@@ -8,7 +9,10 @@ export async function POST(req: NextRequest) {
   try {
     const auth = await verifyN8nApiKey(req)
     if (!auth.valid || !auth.context) {
-      return NextResponse.json({ error: auth.error || "Unauthorized" }, { status: 401 })
+      return NextResponse.json(
+        { success: false, error: auth.error || "Unauthorized", humanReadable: { ar: "مفتاح الـ API غير صالح أو غير مصرح. تحقق من المفتاح." } },
+        { status: WEBHOOK_ALWAYS_OK }
+      )
     }
 
     const body = await req.json().catch(() => null)
@@ -20,29 +24,15 @@ export async function POST(req: NextRequest) {
         {
           success: false,
           error: "phone is required",
-          humanReadable: {
-            ar: "أرسل رقم الهاتف المطلوب التعرف عليه."
-          }
+          humanReadable: { ar: "أرسل رقم الهاتف المطلوب التعرف عليه (phone أو senderPhone أو contact أو query)." }
         },
-        { status: 400 }
+        { status: WEBHOOK_ALWAYS_OK }
       )
     }
 
-    const responseBody = await identifyContactByPhone(input)
+    const responseBody = await runIdentityLogic(input, auth.context, ipAddress, body ?? undefined)
 
-    await logWebhookEvent(
-      auth.context.keyId,
-      "CONTACT_IDENTIFIED",
-      "/api/webhooks/identity",
-      "POST",
-      200,
-      body,
-      responseBody,
-      responseBody.contact.role === "UNREGISTERED" ? "Unregistered number" : undefined,
-      ipAddress
-    )
-
-    return NextResponse.json(responseBody, { status: 200 })
+    return NextResponse.json(responseBody, { status: WEBHOOK_ALWAYS_OK })
   } catch (error) {
     console.error("CONTACT_IDENTIFY_ERROR", error)
 
@@ -62,11 +52,8 @@ export async function POST(req: NextRequest) {
     }
 
     return NextResponse.json(
-      {
-        success: false,
-        error: "Failed to identify contact"
-      },
-      { status: 500 }
+      { success: false, error: "Failed to identify contact", humanReadable: { ar: "حدث خطأ أثناء التعرف على الرقم. جرّب مرة أخرى." } },
+      { status: WEBHOOK_ALWAYS_OK }
     )
   }
 }

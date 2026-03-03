@@ -32,7 +32,7 @@ import {
   type StaffSearchMatch,
   type StaffResolution
 } from "@/lib/staff-search"
-import { webhookHttpStatus } from "@/lib/webhook-response"
+import { WEBHOOK_ALWAYS_OK, webhookHttpStatus, botFail } from "@/lib/webhook-response"
 
 const ENDPOINT = "/api/webhooks/accountants"
 
@@ -3726,19 +3726,18 @@ export async function POST(req: NextRequest) {
   const auth = await verifyN8nApiKey(req)
 
   if (!auth.valid) {
-    const responseBody = {
-      success: false,
-      error: auth.error || "Unauthorized"
-    }
-
-    return NextResponse.json(responseBody, { status: 401 })
+    return NextResponse.json(
+      botFail("مفتاح الـ API غير صالح أو غير مصرح. تحقق من المفتاح في إعدادات n8n.", "UNAUTHORIZED", {
+        suggestions: ["راجع المفتاح في n8n", "تأكد إن المفتاح لقناة المحاسب/الأدمن"]
+      }),
+      { status: WEBHOOK_ALWAYS_OK }
+    )
   }
 
   if (auth.context?.role !== "ACCOUNTANT" && auth.context?.role !== "ADMIN") {
-    const responseBody = {
-      success: false,
-      error: "Forbidden"
-    }
+    const responseBody = botFail("هذا الطلب للمحاسب أو الأدمن فقط. استخدم مفتاحاً مرتبطاً بمحاسب أو أدمن.", "FORBIDDEN", {
+      suggestions: ["استخدم مفتاح قناة المحاسب أو الأدمن", "راجع لوحة المستخدمين والصلاحيات"]
+    })
 
     await logWebhookEvent(
       auth.context?.keyId || "",
@@ -3751,7 +3750,7 @@ export async function POST(req: NextRequest) {
       "Forbidden accountant webhook access"
     )
 
-    return NextResponse.json(responseBody, { status: webhookHttpStatus(403) })
+    return NextResponse.json(responseBody, { status: WEBHOOK_ALWAYS_OK })
   }
 
   let parsed: RequestBody
@@ -3759,10 +3758,9 @@ export async function POST(req: NextRequest) {
   try {
     parsed = await req.json()
   } catch (error) {
-    const responseBody = {
-      success: false,
-      error: "Invalid JSON payload"
-    }
+    const responseBody = botFail("البادي غير صالح. أرسل JSON صحيح يتضمن action و senderPhone و payload.", "INVALID_JSON", {
+      suggestions: ["تأكد إن الـ body JSON مظبوط", "action و senderPhone و payload (كائن) مطلوبين"]
+    })
 
     await logWebhookEvent(
       auth.context.keyId,
@@ -3775,16 +3773,15 @@ export async function POST(req: NextRequest) {
       "Malformed JSON"
     )
 
-    return NextResponse.json(responseBody, { status: webhookHttpStatus(400) })
+    return NextResponse.json(responseBody, { status: WEBHOOK_ALWAYS_OK })
   }
 
   const { action, senderPhone, payload } = parsed
 
   if (!action || !senderPhone || typeof payload !== "object" || payload === null) {
-    const responseBody = {
-      success: false,
-      error: "Missing required fields"
-    }
+    const responseBody = botFail("مطلوب: action و senderPhone و payload (كائن). تحقق من الطلب.", "MISSING_FIELDS", {
+      suggestions: ["ضيف action (اسم الأكشن)", "ضيف senderPhone من identity", "ضيف payload كائن"]
+    })
 
     await logWebhookEvent(
       auth.context.keyId,
@@ -3797,14 +3794,15 @@ export async function POST(req: NextRequest) {
       "Missing action, senderPhone, or payload"
     )
 
-    return NextResponse.json(responseBody, { status: webhookHttpStatus(400) })
+    return NextResponse.json(responseBody, { status: WEBHOOK_ALWAYS_OK })
   }
 
   if (!ALLOWED_ACTIONS.includes(action as AllowedAction)) {
-    const responseBody = {
-      success: false,
-      error: "Unsupported action"
-    }
+    const responseBody = botFail(
+      `أكشن غير مدعوم. القيم المسموحة تشمل: ${ALLOWED_ACTIONS.slice(0, 6).join(", ")} وغيرها. راجع البرومبت.`,
+      "UNSUPPORTED_ACTION",
+      { suggestions: ["استخدم اسم الأكشن من القائمة", "مثال: CREATE_PM_ADVANCE، LIST_INVOICES"] }
+    )
 
     await logWebhookEvent(
       auth.context.keyId,
@@ -3817,19 +3815,15 @@ export async function POST(req: NextRequest) {
       `Unsupported action: ${action}`
     )
 
-    return NextResponse.json(responseBody, { status: webhookHttpStatus(400) })
+    return NextResponse.json(responseBody, { status: WEBHOOK_ALWAYS_OK })
   }
 
   const accountant = await resolveAccountant(senderPhone)
 
   if (!accountant) {
-    const responseBody = {
-      success: false,
-      error: "Accountant not recognized",
-      humanReadable: {
-        ar: "رقم الواتساب غير مرتبط بحساب محاسب."
-      }
-    }
+    const responseBody = botFail("رقم الواتساب غير مرتبط بحساب محاسب.", "ACCOUNTANT_NOT_FOUND", {
+      suggestions: ["راجع لوحة المستخدمين/جهات الاتصال", "تأكد إن الرقم مسجّل كمحاسب أو أدمن"]
+    })
 
     await logWebhookEvent(
       auth.context.keyId,
@@ -3842,7 +3836,7 @@ export async function POST(req: NextRequest) {
       "Accountant phone not resolved"
     )
 
-    return NextResponse.json(responseBody, { status: webhookHttpStatus(404) })
+    return NextResponse.json(responseBody, { status: WEBHOOK_ALWAYS_OK })
   }
 
   const handler = HANDLERS[action as AllowedAction]
@@ -3856,13 +3850,9 @@ export async function POST(req: NextRequest) {
 
     handlerResponse = {
       status: 500,
-      body: {
-        success: false,
-        error: "Internal server error",
-        humanReadable: {
-          ar: "حدث خطأ أثناء تنفيذ طلب المحاسب."
-        }
-      }
+      body: botFail("حدث خطأ أثناء تنفيذ طلب المحاسب. جرّب مرة تانية أو تحقق من البيانات.", "INTERNAL_ERROR", {
+        suggestions: ["أعد الطلب بعد شوية", "تأكد من المبالغ والأرقام والحقول المطلوبة"]
+      })
     }
   }
 
@@ -3881,5 +3871,5 @@ export async function POST(req: NextRequest) {
     handlerResponse.body.success ? undefined : handlerResponse.body.error
   )
 
-  return NextResponse.json(handlerResponse.body, { status: webhookHttpStatus(handlerResponse.status) })
+  return NextResponse.json(handlerResponse.body, { status: WEBHOOK_ALWAYS_OK })
 }

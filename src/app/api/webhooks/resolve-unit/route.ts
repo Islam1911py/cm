@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server"
 import { verifyN8nApiKey } from "@/lib/n8n-auth"
 import { resolveUnit } from "@/lib/resolve-unit"
-import { webhookHttpStatus } from "@/lib/webhook-response"
+import { WEBHOOK_ALWAYS_OK } from "@/lib/webhook-response"
 
 /**
  * POST /api/webhooks/resolve-unit
@@ -15,12 +15,15 @@ import { webhookHttpStatus } from "@/lib/webhook-response"
 export async function POST(req: NextRequest) {
   const auth = await verifyN8nApiKey(req)
   if (!auth.valid || !auth.context) {
-    return NextResponse.json({ error: auth.error || "Unauthorized" }, { status: 401 })
+    return NextResponse.json(
+      { success: false, error: auth.error || "Unauthorized", humanReadable: { ar: "مفتاح غير صالح أو غير مصرح. تحقق من المفتاح." } },
+      { status: WEBHOOK_ALWAYS_OK }
+    )
   }
   if (auth.context.role !== "RESIDENT") {
     return NextResponse.json(
       { success: false, error: "Only resident context can resolve unit", humanReadable: { ar: "هذا الطلب للسكان فقط." } },
-      { status: webhookHttpStatus(403) }
+      { status: WEBHOOK_ALWAYS_OK }
     )
   }
 
@@ -31,5 +34,5 @@ export async function POST(req: NextRequest) {
     unitCode: body.unitCode,
     buildingNumber: body.buildingNumber
   })
-  return NextResponse.json(result.data, { status: webhookHttpStatus(result.status) })
+  return NextResponse.json(result.data, { status: WEBHOOK_ALWAYS_OK })
 }
