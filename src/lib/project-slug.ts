@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@prisma/client"
+import { Prisma } from "@prisma/client"
 
 const ARABIC_TO_LATIN: Record<string, string> = {
   ا: "a", أ: "a", إ: "a", آ: "a", ء: "",
@@ -6,6 +7,19 @@ const ARABIC_TO_LATIN: Record<string, string> = {
   ر: "r", ز: "z", س: "s", ش: "sh", ص: "s", ض: "d", ط: "t", ظ: "z",
   ع: "a", غ: "gh", ف: "f", ق: "q", ك: "k", ل: "l", م: "m", ن: "n",
   ه: "h", و: "w", ي: "y", ة: "a", ى: "a", ئ: "y", ؤ: "w"
+}
+
+/** كاف فارسي/أردي (ک U+06A9) → ك عربي — عشان "کرمه" و "كرمة" يطابقوا نفس المشروع */
+const ARABIC_LOOKALIKES: Record<string, string> = {
+  "\u06A9": "\u0643", // Persian/Urdū Kaf → Arabic Kaf
+  "\u06CC": "\u064A"  // Persian Ye (ي) → Arabic Ya
+}
+function normalizeArabicLookalikes(s: string): string {
+  let out = s
+  for (const [from, to] of Object.entries(ARABIC_LOOKALIKES)) {
+    out = out.split(from).join(to)
+  }
+  return out
 }
 
 function toSlugFromStrip(strip: string): string {
@@ -50,7 +64,7 @@ const STRONG_PLACE_TYPE_GROUPS: PlaceTypeGroup[] = [
   { canonical: "شاطئ", variants: ["شاطي", "الشاطئ", "شواطئ"] },
   { canonical: "مستشفى", variants: ["مستشفي", "المستشفى", "مستشفيات"] },
   { canonical: "بركة", variants: ["بركه", "بركا", "البركة"] },
-  { canonical: "صواري", variants: ["سواري", "الصواري"] },
+  { canonical: "صواري", variants: ["سواري", "الصواري", "swary", "sawary"] },
   { canonical: "ريسيدنس", variants: ["ريسيدانس", "residence", "الريسيدنس"] },
   { canonical: "مول", variants: ["المول", "مولات", "مال"] },
   { canonical: "هايبر", variants: ["هايبرماركت", "هايبر ماركت", "الهايبر", "hyper", "hypermarket"] },
@@ -160,10 +174,12 @@ function stripPlaceTypes(s: string): string {
 
 export function projectNameToMatchSlug(name: string): string {
   const t = name.trim().toLowerCase()
-  const withAliases = normalizePlaceTypeAliases(t)
+  const withLookalikes = normalizeArabicLookalikes(t)
+  const withAliases = normalizePlaceTypeAliases(withLookalikes)
   const afterTaMarbuta = normalizeTaMarbuta(withAliases)
   const strip = stripPlaceTypes(afterTaMarbuta)
-  return toSlugFromStrip(strip)
+  const toStrip = strip.length > 0 ? strip : afterTaMarbuta
+  return toSlugFromStrip(toStrip)
 }
 
 /**
@@ -175,7 +191,8 @@ export async function findProjectBySlugOrName(
   projectName: string
 ): Promise<{ id: string; name: string; slug: string } | null> {
   const rawInput = projectName.trim()
-  const inputSlug = projectNameToMatchSlug(projectName)
+  const normalizedInput = normalizeTaMarbuta(normalizeArabicLookalikes(rawInput))
+  const inputSlug = projectNameToMatchSlug(normalizedInput)
 
   // المرحلة 1: تطابق slug
   if (inputSlug) {
@@ -186,30 +203,48 @@ export async function findProjectBySlugOrName(
     if (bySlug) return bySlug
   }
 
-  // المرحلة 2: fallback name contains (مع تطبيع كرمه→كرمة)
-  if (rawInput) {
+  // المرحلة 2: fallback name contains (مع تطبيع ک→ك، كرمه→كرمة)
+  if (normalizedInput) {
     const byName = await db.project.findFirst({
-      where: { name: { contains: rawInput, mode: "insensitive" } },
+      where: { name: { contains: normalizedInput, mode: "insensitive" } },
       select: { id: true, name: true, slug: true }
     })
     if (byName) return byName
-    const normalizedName = normalizeTaMarbuta(rawInput)
-    if (normalizedName !== rawInput) {
-      const byNorm = await db.project.findFirst({
-        where: { name: { contains: normalizedName, mode: "insensitive" } },
+    if (rawInput !== normalizedInput) {
+      const byRaw = await db.project.findFirst({
+        where: { name: { contains: rawInput, mode: "insensitive" } },
         select: { id: true, name: true, slug: true }
       })
-      if (byNorm) return byNorm
+      if (byRaw) return byRaw
     }
   }
 
-  // المرحلة 3: مطابقة بالـ slug المحسوب من الاسم — عشان "Karma" يطابق مشروع "كرمة" حتى لو slug في الداتا null أو الاسم عربي
+  // المرحلة 3: مطابقة بالـ slug المحسوب من الاسم — أي مشروع (حتى لو slug في الداتا null) يطابق من اسمه
   if (inputSlug) {
     const all = await db.project.findMany({ select: { id: true, name: true, slug: true } })
     const byComputedSlug = all.find((p) => projectNameToMatchSlug(p.name) === inputSlug)
-    if (byComputedSlug) return byComputedSlug
+    if (byComputedSlug) {
+      if (byComputedSlug.slug == null) {
+        const newSlug = projectSlugForCreate(byComputedSlug.name)
+        db.project.update({ where: { id: byComputedSlug.id }, data: { slug: newSlug } }).catch(() => {})
+      }
+      return { id: byComputedSlug.id, name: byComputedSlug.name, slug: byComputedSlug.slug ?? projectSlugForCreate(byComputedSlug.name) }
+    }
   }
 
+  // المرحلة 4: مطابقة تقريبية — pg_trgm (similarity) إن وُجد، وإلا fallback لـ Node (Levenshtein)
+  if (inputSlug) {
+    const smart = await findProjectSmart(db, inputSlug, { maxCandidates: 5, minSimilarity: SIMILARITY_THRESHOLD })
+    if (smart && smart.length === 1) return { id: smart[0].id, name: smart[0].name, slug: smart[0].slug }
+    if (smart && smart.length > 1 && smart[0].sim - smart[1].sim >= 0.15) return { id: smart[0].id, name: smart[0].name, slug: smart[0].slug }
+  }
+  const close = await findCloseProjects(db, normalizedInput, 5, 2)
+  if (close.length === 1) return close[0]
+  if (close.length > 1) {
+    const bestDist = slugLevenshtein(inputSlug || "", close[0].slug ?? "")
+    const sameDist = close.filter((p) => slugLevenshtein(inputSlug || "", p.slug ?? "") === bestDist)
+    if (sameDist.length === 1) return sameDist[0]
+  }
   return null
 }
 
@@ -238,7 +273,7 @@ export function slugLevenshtein(a: string, b: string): number {
   return d[na][nb]
 }
 
-/** مشاريع قريبة من الاسم (slug شبيه) — للعرض كخيارات أو تأكيد واحد. */
+/** مشاريع قريبة من الاسم (slug شبيه) — للعرض كخيارات أو تأكيد واحد. (Fallback لو pg_trgm مش مفعّل.) */
 export async function findCloseProjects(
   db: PrismaClient,
   projectName: string,
@@ -257,6 +292,46 @@ export async function findCloseProjects(
     .filter((p) => p.distance <= maxDistance || p.slug!.includes(inputSlug) || inputSlug.includes(p.slug!))
   withDistance.sort((a, b) => a.distance - b.distance)
   return withDistance.slice(0, maxCandidates).map(({ distance: _d, ...rest }) => rest)
+}
+
+export const SIMILARITY_THRESHOLD = 0.3
+
+type ProjectRow = { id: string; name: string; slug: string | null }
+
+/**
+ * مطابقة تقريبية على مستوى الداتابيز (pg_trgm).
+ * المدخل: searchKey = slug محسوب من الاسم (كرمة/كارما → karma).
+ * يرجع مشروع واحد لو واضح، أو مصفوفة مرشحين.
+ * لو الـ extension مش مفعّل يقع في fallback لـ findCloseProjects.
+ */
+export type ProjectWithSimilarity = { id: string; name: string; slug: string; sim: number }
+
+export async function findProjectSmart(
+  db: PrismaClient,
+  searchKey: string,
+  options?: { maxCandidates?: number; minSimilarity?: number }
+): Promise<ProjectWithSimilarity[] | null> {
+  const maxCandidates = options?.maxCandidates ?? 5
+  const minSim = options?.minSimilarity ?? SIMILARITY_THRESHOLD
+  if (!searchKey || searchKey.length < 2) return null
+
+  try {
+    const rows = await db.$queryRaw<(ProjectRow & { sim: number })[]>(
+      Prisma.sql`
+        SELECT id, name, slug,
+               similarity(slug, ${searchKey}) AS sim
+        FROM "Project"
+        WHERE slug IS NOT NULL AND slug % ${searchKey}
+        ORDER BY sim DESC
+        LIMIT ${maxCandidates}
+      `
+    )
+    const above = rows.filter((r) => r.sim >= minSim)
+    if (above.length === 0) return null
+    return above.map(({ id, name, slug, sim }) => ({ id, name, slug: slug ?? "", sim }))
+  } catch {
+    return null
+  }
 }
 
 /** وحدات المشروع للعرض: "احنا بنغطي عمارة 1، 2، 3". */
