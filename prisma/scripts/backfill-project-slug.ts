@@ -3,7 +3,7 @@
  * تشغيل مرة واحدة للمشاريع اللي slug فيها null: npm run db:backfill-project-slug
  */
 import { PrismaClient } from "@prisma/client"
-import { projectSlugForCreate } from "../../src/lib/project-slug"
+import { projectSlugForCreate } from "./slug-for-backfill"
 
 const db = new PrismaClient()
 
