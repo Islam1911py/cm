@@ -33,7 +33,8 @@ type AllowedAction = (typeof ALLOWED_ACTIONS)[number]
 
 type ActionMap = {
   CREATE_OPERATIONAL_EXPENSE: {
-    projectId: string
+    projectId?: string | null
+    projectName?: string | null
     unitCode: string
     description: string
     amount: number | string
@@ -42,19 +43,22 @@ type ActionMap = {
     recordedAt?: string | null
   }
   GET_RESIDENT_PHONE: {
-    projectId: string
+    projectId?: string | null
+    projectName?: string | null
     unitCode: string
     residentName?: string | null
     limit?: number | string
   }
   LIST_PROJECT_TICKETS: {
-    projectId: string
+    projectId?: string | null
+    projectName?: string | null
     unitCode?: string | null
     statuses?: string[]
     limit?: number | string
   }
   LIST_PROJECT_UNITS: {
-    projectId: string
+    projectId?: string | null
+    projectName?: string | null
     includeInactive?: boolean
     limit?: number | string
     search?: string | null
@@ -73,27 +77,32 @@ type ActionMap = {
     filterDsl?: string | null
   }
   GET_LAST_ELECTRICITY_TOPUP: {
-    projectId: string
+    projectId?: string | null
+    projectName?: string | null
     unitCode?: string | null
   }
   CREATE_TECHNICIAN_WORK: {
-    projectId: string
+    projectId?: string | null
+    projectName?: string | null
     unitCode: string
     technicianQuery: string
     description: string
   }
   LIST_TECHNICIAN_WORK: {
-    projectId: string
+    projectId?: string | null
+    projectName?: string | null
     unitCode?: string | null
     status?: "PENDING" | "IN_PROGRESS" | "COMPLETED" | "ALL"
     limit?: number | string
   }
   START_TECHNICIAN_WORK: {
-    projectId: string
+    projectId?: string | null
+    projectName?: string | null
     unitCode: string
   }
   COMPLETE_TECHNICIAN_WORK: {
-    projectId: string
+    projectId?: string | null
+    projectName?: string | null
     unitCode: string
     amount: number | string
     description: string
@@ -2733,6 +2742,77 @@ export async function POST(req: NextRequest) {
       }),
       { status: WEBHOOK_ALWAYS_OK }
     )
+  }
+
+  const ACTIONS_REQUIRING_PROJECT: AllowedAction[] = [
+    "CREATE_OPERATIONAL_EXPENSE",
+    "GET_RESIDENT_PHONE",
+    "LIST_PROJECT_TICKETS",
+    "LIST_PROJECT_UNITS",
+    "LIST_UNIT_EXPENSES",
+    "GET_LAST_ELECTRICITY_TOPUP",
+    "CREATE_TECHNICIAN_WORK",
+    "LIST_TECHNICIAN_WORK",
+    "START_TECHNICIAN_WORK",
+    "COMPLETE_TECHNICIAN_WORK"
+  ]
+  if (ACTIONS_REQUIRING_PROJECT.includes(action as AllowedAction)) {
+    const rawProjectId = (payload as { projectId?: string | null }).projectId
+    const projectName = typeof (payload as { projectName?: string | null }).projectName === "string"
+      ? (payload as { projectName: string }).projectName.trim()
+      : null
+    const hasProjectId = typeof rawProjectId === "string" && rawProjectId.trim().length > 0
+    if (projectName && !hasProjectId) {
+      const { findProjectBySlugOrName } = await import("@/lib/project-slug")
+      const resolved = await findProjectBySlugOrName(db, projectName)
+      if (!resolved) {
+        return NextResponse.json(
+          {
+            success: false,
+            action,
+            manager: buildManagerContext(manager),
+            error: "Project not found",
+            projectId: null,
+            humanReadable: {
+              ar: "لم أجد مشروعًا بهذا الاسم. جرّب اسمًا آخر أو حدد المشروع من قائمة مشاريعك."
+            },
+            issues: { projectName },
+            suggestions: [
+              {
+                title: "عرض المشاريع المتاحة",
+                prompt: "اعرض قائمة المشاريع اللي حضرتك مكلّف بيها واختر واحد.",
+                data: {}
+              }
+            ]
+          },
+          { status: WEBHOOK_ALWAYS_OK }
+        )
+      }
+      if (!assertProjectAccess(manager, resolved.id)) {
+        return NextResponse.json(
+          {
+            success: false,
+            action,
+            manager: buildManagerContext(manager),
+            error: "Project manager is not assigned to this project",
+            projectId: null,
+            humanReadable: {
+              ar: "أنت غير مكلّف بهذا المشروع بالاسم المذكور. المشاريع اللي عندك من identity — اختر واحد منهم."
+            },
+            issues: { projectName },
+            suggestions: [
+              {
+                title: "طلب إضافة المشروع",
+                prompt: "اطلب إضافة المشروع لصلاحياتك ثم أعد الطلب باسم المشروع أو رقمه.",
+                data: { managerId: manager.id, projectName }
+              }
+            ]
+          },
+          { status: WEBHOOK_ALWAYS_OK }
+        )
+      }
+      ;(payload as Record<string, unknown>).projectId = resolved.id
+    }
   }
 
   const handler = actionHandlers[action as AllowedAction]
