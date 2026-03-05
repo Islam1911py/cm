@@ -1292,115 +1292,48 @@ async function handleUnitExpensesList(
   }
 
   if (!projectRecord && normalizedProjectName) {
-    const { projectNameToMatchSlug } = await import("@/lib/project-slug")
-    const inputSlug = projectNameToMatchSlug(normalizedProjectName)
-
-    if (manager.canViewAllProjects) {
-      const candidates = await db.project.findMany({
-        select: {
-          id: true,
-          name: true,
-          slug: true
-        },
-        orderBy: {
-          name: "asc"
-        }
-      })
-
-      const lowerSearch = normalizedProjectName.toLowerCase()
-
-      const matchedCandidates = candidates.filter(
-        (candidate) =>
-          (candidate.name ? candidate.name.toLowerCase().includes(lowerSearch) : false) ||
-          (inputSlug && candidate.slug === inputSlug)
-      )
-
-      const exactMatch = matchedCandidates.find(
-        (candidate) =>
-          (inputSlug && candidate.slug === inputSlug) ||
-          (candidate.name ? candidate.name.toLowerCase().trim() === lowerSearch : false)
-      )
-
-      if (exactMatch) {
-        projectRecord = exactMatch
-      } else if (matchedCandidates.length === 1) {
-        projectRecord = matchedCandidates[0]
-      }
-
-      if (!projectRecord) {
-        return {
-          status: matchedCandidates.length > 1 ? 409 : 404,
-          body: {
-            success: false,
-            error: matchedCandidates.length > 1 ? "Project name ambiguous" : "Project not found",
-            projectId: null,
-            humanReadable: {
-              ar:
-                matchedCandidates.length > 1
-                  ? "اسم المشروع مطابق لأكثر من مشروع. حدد الاسم الكامل من القائمة."
-                  : "لم أجد مشروعًا بهذا الاسم لذلك لا توجد مصروفات أعرضها."
-            },
-            issues: {
-              projectName: normalizedProjectName,
-              matchedProjectNames: matchedCandidates.map((candidate) => candidate.name)
-            },
-            suggestions:
-              matchedCandidates.length > 0
-                ? [
-                    {
-                      title: "اختيار اسم المشروع",
-                      prompt: "اذكر اسم المشروع بالضبط كما هو مسجل.",
-                      data: {
-                        options: matchedCandidates.map((candidate) => ({
-                          projectId: candidate.id,
-                          projectName: candidate.name
-                        }))
-                      }
-                    }
-                  ]
-                : undefined
-          }
+    const { findProjectBySlugOrName } = await import("@/lib/project-slug")
+    const resolved = await findProjectBySlugOrName(db, normalizedProjectName)
+    if (!resolved) {
+      return {
+        status: 404,
+        body: {
+          success: false,
+          error: "Project not found",
+          projectId: null,
+          humanReadable: {
+            ar: "لم أجد مشروعًا بهذا الاسم لذلك لا توجد مصروفات أعرضها. جرّب اسمًا آخر أو حدد المشروع بالضبط."
+          },
+          issues: { projectName: normalizedProjectName }
         }
       }
-    } else {
-      const matchedAssignment = manager.assignedProjects.find((assignment) => {
-        const proj = assignment.project
-        if (!proj) return false
-        const nameMatch = proj.name
-          ? proj.name.toLowerCase().trim() === normalizedProjectName.toLowerCase()
-          : false
-        const slugMatch = inputSlug && proj.slug === inputSlug
-        return nameMatch || slugMatch
-      })
-
-      if (!matchedAssignment) {
-        return {
-          status: 403,
-          body: {
-            success: false,
-            error: "Project manager is not assigned to this project",
-            projectId: null,
-            humanReadable: {
-              ar: "المدير غير مكلّف بهذا المشروع بالاسم المذكور."
-            },
-            suggestions: [
-              {
-                title: "طلب إضافة المشروع",
-                prompt: "اطلب إضافة المشروع لصلاحياتي ثم أعد الطلب باسم المشروع أو رقمه.",
-                data: {
-                  managerId: manager.id,
-                  projectName: normalizedProjectName
-                }
+    }
+    if (!assertProjectAccess(manager, resolved.id)) {
+      return {
+        status: 403,
+        body: {
+          success: false,
+          error: "Project manager is not assigned to this project",
+          projectId: null,
+          humanReadable: {
+            ar: "أنت غير مكلّف بهذا المشروع بالاسم المذكور."
+          },
+          suggestions: [
+            {
+              title: "طلب إضافة المشروع",
+              prompt: "اطلب إضافة المشروع لصلاحياتي ثم أعد الطلب باسم المشروع أو رقمه.",
+              data: {
+                managerId: manager.id,
+                projectName: normalizedProjectName
               }
-            ]
-          }
+            }
+          ]
         }
       }
-
-      projectRecord = {
-        id: matchedAssignment.projectId,
-        name: matchedAssignment.project?.name ?? null
-      }
+    }
+    projectRecord = {
+      id: resolved.id,
+      name: resolved.name
     }
   }
 

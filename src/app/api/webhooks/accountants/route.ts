@@ -2174,76 +2174,24 @@ async function handleListUnitExpenses(
   let project: { id: string; name: string | null } | null = null
 
   if (normalizedProjectName && !resolvedProjectId) {
-    const { projectNameToMatchSlug } = await import("@/lib/project-slug")
-    const inputSlug = projectNameToMatchSlug(normalizedProjectName)
-
-    const candidates = await db.project.findMany({
-      select: {
-        id: true,
-        name: true,
-        slug: true
-      },
-      orderBy: {
-        name: "asc"
-      }
-    })
-
-    const lowerSearch = normalizedProjectName.toLowerCase()
-
-    const matchedCandidates = candidates.filter(
-      (candidate) =>
-        (candidate.name ? candidate.name.toLowerCase().includes(lowerSearch) : false) ||
-        (inputSlug && candidate.slug === inputSlug)
-    )
-
-    const exactMatch = matchedCandidates.find(
-      (candidate) =>
-        (inputSlug && candidate.slug === inputSlug) ||
-        (candidate.name ? candidate.name.toLowerCase().trim() === lowerSearch : false)
-    )
-
-    if (exactMatch) {
-      project = exactMatch
-    } else if (matchedCandidates.length === 1) {
-      project = matchedCandidates[0]
-    }
-
-    if (!project) {
+    const { findProjectBySlugOrName } = await import("@/lib/project-slug")
+    const resolved = await findProjectBySlugOrName(db, normalizedProjectName)
+    if (resolved) {
+      project = { id: resolved.id, name: resolved.name }
+      resolvedProjectId = resolved.id
+    } else {
       return {
-        status: matchedCandidates.length > 1 ? 409 : 404,
+        status: 404,
         body: {
           success: false,
-          error: matchedCandidates.length > 1 ? "Project name ambiguous" : "Project not found",
+          error: "Project not found",
           humanReadable: {
-            ar:
-              matchedCandidates.length > 1
-                ? "اسم المشروع الذي أرسلته يطابق أكثر من مشروع. حدد الاسم الكامل من القائمة."
-                : "لم أجد مشروعًا بهذا الاسم أثناء البحث عن المصروفات."
+            ar: "لم أجد مشروعًا بهذا الاسم أثناء البحث عن المصروفات. جرّب اسمًا آخر أو حدد المشروع بالضبط."
           },
-          issues: {
-            projectName: normalizedProjectName,
-            matchedProjectNames: matchedCandidates.map((candidate) => candidate.name)
-          },
-          suggestions:
-            matchedCandidates.length > 0
-              ? [
-                  {
-                    title: "اختيار اسم المشروع",
-                    prompt: "اذكر اسم المشروع بالضبط كما هو مسجل.",
-                    data: {
-                      options: matchedCandidates.map((candidate) => ({
-                        projectId: candidate.id,
-                        projectName: candidate.name
-                      }))
-                    }
-                  }
-                ]
-              : undefined
+          issues: { projectName: normalizedProjectName }
         }
       }
     }
-
-    resolvedProjectId = project.id
   }
 
   if (resolvedProjectId) {
@@ -3207,53 +3155,24 @@ async function handleListInvoices(
   let project: { id: string; name: string | null } | null = null
 
   if (normalizedProjectName && !resolvedProjectId) {
-    const { projectNameToMatchSlug } = await import("@/lib/project-slug")
-    const inputSlug = projectNameToMatchSlug(normalizedProjectName)
-
-    const candidates = await db.project.findMany({
-      select: { id: true, name: true, slug: true },
-      orderBy: { name: "asc" }
-    })
-
-    const lowerSearch = normalizedProjectName.toLowerCase()
-    const matchedCandidates = candidates.filter(
-      (candidate) =>
-        (candidate.name ? candidate.name.toLowerCase().includes(lowerSearch) : false) ||
-        (inputSlug && candidate.slug === inputSlug)
-    )
-
-    const exactMatch = matchedCandidates.find(
-      (candidate) =>
-        (inputSlug && candidate.slug === inputSlug) ||
-        (candidate.name ? candidate.name.toLowerCase().trim() === lowerSearch : false)
-    )
-
-    if (exactMatch) {
-      project = exactMatch
-    } else if (matchedCandidates.length === 1) {
-      project = matchedCandidates[0]
-    }
-
-    if (!project) {
+    const { findProjectBySlugOrName } = await import("@/lib/project-slug")
+    const resolved = await findProjectBySlugOrName(db, normalizedProjectName)
+    if (resolved) {
+      project = { id: resolved.id, name: resolved.name }
+      resolvedProjectId = resolved.id
+    } else {
       return {
-        status: matchedCandidates.length > 1 ? 409 : 404,
+        status: 404,
         body: {
           success: false,
-          error: matchedCandidates.length > 1 ? "Project name ambiguous" : "Project not found",
+          error: "Project not found",
           humanReadable: {
-            ar: matchedCandidates.length > 1
-              ? "اسم المشروع يطابق أكثر من مشروع. حدد الاسم الكامل من القائمة."
-              : "لم أجد مشروعًا بهذا الاسم أثناء البحث عن الفواتير."
+            ar: "لم أجد مشروعًا بهذا الاسم أثناء البحث عن الفواتير. جرّب اسمًا آخر أو حدد المشروع بالضبط."
           },
-          issues: {
-            projectName: normalizedProjectName,
-            matchedProjectNames: matchedCandidates.map((c) => c.name)
-          }
+          issues: { projectName: normalizedProjectName }
         }
       }
     }
-
-    resolvedProjectId = project.id
   }
 
   if (resolvedProjectId) {
