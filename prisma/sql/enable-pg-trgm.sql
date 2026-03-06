@@ -1,5 +1,5 @@
 -- تشغيل مرة واحدة بعد db push (أو يدوياً على الـ DB).
--- مطلوب لـ findProjectSmart: مطابقة تقريبية على slug (كرمة/كارما/karma).
+-- مطلوب لـ findProjectSmart و findProjectByWordSimilarity: مطابقة تقريبية على slug (كرمة/كارما/karma، similarity + word_similarity).
 --
 -- من الطرفية (استخدم رابط الداتابيز من .env):
 --   psql "$DATABASE_URL" -f prisma/sql/enable-pg-trgm.sql

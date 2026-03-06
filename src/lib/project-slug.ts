@@ -57,7 +57,7 @@ type PlaceTypeGroup = { canonical: string; variants: string[] }
 
 /** Strong Types: آمنة للإزالة — نوع المكان الحقيقي (نُزيل قبل بناء الـ slug). */
 const STRONG_PLACE_TYPE_GROUPS: PlaceTypeGroup[] = [
-  { canonical: "كومباوند", variants: ["كمبوند", "كمبواند", "كامباوند", "كومبوند", "كمباوند", "الكمباوند", "الكمبوند"] },
+  { canonical: "كومباوند", variants: ["كمبوند", "كمبواند", "كامباوند", "كومبوند", "كمباوند", "الكمباوند", "الكمبوند", "الكومباوند"] },
   { canonical: "مشروع", variants: ["مشرووع", "مشرورع", "المشروع", "مشاريع"] },
   { canonical: "محل", variants: ["المحل", "محلات"] },
   { canonical: "صيدلية", variants: ["صيدليه", "الصيدلية", "صيدليات"] },
@@ -169,6 +169,8 @@ function stripPlaceTypes(s: string): string {
     const c = escapeRe(canonical)
     out = out.replace(new RegExp(c + "\\s*", "g"), "").replace(new RegExp("ال" + c + "\\s*", "g"), "")
   }
+  // إزالة "ال" من أول النص المتبقي (مثلاً "الكرمة" → "كرمة") عشان المطابقة مع اسم مسجّل بالإنجليزي (karma)
+  out = out.replace(/^\s*ال(?=\p{L})/u, "").trim()
   return out.replace(/\s+/g, " ").trim()
 }
 
@@ -232,11 +234,13 @@ export async function findProjectBySlugOrName(
     }
   }
 
-  // المرحلة 4: مطابقة تقريبية — pg_trgm (similarity) إن وُجد، وإلا fallback لـ Node (Levenshtein)
+  // المرحلة 4: مطابقة تقريبية — pg_trgm (similarity ثم word_similarity) إن وُجد، وإلا fallback لـ Node (Levenshtein)
   if (inputSlug) {
     const smart = await findProjectSmart(db, inputSlug, { maxCandidates: 5, minSimilarity: SIMILARITY_THRESHOLD })
     if (smart && smart.length === 1) return { id: smart[0].id, name: smart[0].name, slug: smart[0].slug }
     if (smart && smart.length > 1 && smart[0].sim - smart[1].sim >= 0.15) return { id: smart[0].id, name: smart[0].name, slug: smart[0].slug }
+    const byWord = await findProjectByWordSimilarity(db, inputSlug, normalizedInput)
+    if (byWord) return byWord
   }
   const close = await findCloseProjects(db, normalizedInput, 5, 2)
   if (close.length === 1) return close[0]
@@ -319,9 +323,12 @@ export async function findProjectSmart(
     const rows = await db.$queryRaw<(ProjectRow & { sim: number })[]>(
       Prisma.sql`
         SELECT id, name, slug,
-               similarity(slug, ${searchKey}) AS sim
+               GREATEST(
+                 COALESCE(similarity(slug, ${searchKey}), 0),
+                 COALESCE(similarity(COALESCE(name, ''), ${searchKey}), 0)
+               ) AS sim
         FROM "Project"
-        WHERE slug IS NOT NULL AND slug % ${searchKey}
+        WHERE slug IS NOT NULL
         ORDER BY sim DESC
         LIMIT ${maxCandidates}
       `
@@ -329,6 +336,45 @@ export async function findProjectSmart(
     const above = rows.filter((r) => r.sim >= minSim)
     if (above.length === 0) return null
     return above.map(({ id, name, slug, sim }) => ({ id, name, slug: slug ?? "", sim }))
+  } catch {
+    return null
+  }
+}
+
+/** مطابقة بـ word_similarity (pg_trgm) على الـ slug والـ name — عشان نلقط slug لاتيني واسم عربي. */
+const WORD_SIMILARITY_THRESHOLD = 0.35
+
+export async function findProjectByWordSimilarity(
+  db: PrismaClient,
+  searchKeyLatin: string,
+  searchKeyArabic?: string | null
+): Promise<{ id: string; name: string; slug: string } | null> {
+  const latin = searchKeyLatin?.trim() ?? ""
+  const arabic = (searchKeyArabic?.trim() && searchKeyArabic !== latin) ? searchKeyArabic.trim() : latin
+  if (latin.length < 2 && arabic.length < 2) return null
+  try {
+    const rows = await db.$queryRaw<(ProjectRow & { wsim: number })[]>(
+      Prisma.sql`
+        SELECT id, name, slug,
+               GREATEST(
+                 COALESCE(word_similarity(slug, ${latin}), 0),
+                 COALESCE(word_similarity(COALESCE(name, ''), ${latin}), 0),
+                 COALESCE(word_similarity(COALESCE(name, ''), ${arabic}), 0)
+               ) AS wsim
+        FROM "Project"
+        WHERE (
+          (slug IS NOT NULL AND word_similarity(slug, ${latin}) > ${WORD_SIMILARITY_THRESHOLD})
+          OR (name IS NOT NULL AND word_similarity(name, ${latin}) > ${WORD_SIMILARITY_THRESHOLD})
+          OR (name IS NOT NULL AND word_similarity(name, ${arabic}) > ${WORD_SIMILARITY_THRESHOLD})
+        )
+        ORDER BY wsim DESC
+        LIMIT 3
+      `
+    )
+    if (rows.length === 0) return null
+    if (rows.length === 1) return { id: rows[0].id, name: rows[0].name, slug: rows[0].slug ?? "" }
+    if (rows.length >= 2 && (rows[0].wsim - rows[1].wsim) >= 0.15) return { id: rows[0].id, name: rows[0].name, slug: rows[0].slug ?? "" }
+    return null
   } catch {
     return null
   }
