@@ -2699,9 +2699,25 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  const action = requestBody?.action
-  const senderPhone = String(requestBody?.senderPhone ?? "").trim()
-  const payload = requestBody?.payload ?? {}
+  // دعم صيغة n8n/Tool: الـ payload الفعلي قد يكون داخل parameters0_Value كنص JSON
+  let body: Record<string, unknown> = (requestBody as Record<string, unknown>) ?? {}
+  const paramsValue = (requestBody as Record<string, unknown>)?.parameters0_Value
+  if (typeof paramsValue === "string" && paramsValue.trim()) {
+    try {
+      const parsed = JSON.parse(paramsValue) as Record<string, unknown>
+      if (parsed && typeof parsed === "object") body = parsed
+    } catch {
+      // لو الـ JSON معطوب نكمل بالـ body الأصلي
+    }
+  }
+
+  const rawAction = body.action
+  const action =
+    typeof rawAction === "string"
+      ? rawAction.trim().toUpperCase()
+      : rawAction
+  const senderPhone = String(body.senderPhone ?? "").trim()
+  const payload = body.payload ?? {}
 
   if (!action || !ALLOWED_ACTIONS.includes(action as AllowedAction)) {
     return NextResponse.json(
