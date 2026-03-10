@@ -1150,8 +1150,29 @@ async function handleProjectUnitsList(
     take
   })
 
-  const firstUnit = units[0]
-  const activeUnits = units.filter((unit) => unit.isActive).length
+  // لو في search ومالقيناش أي وحدة مطابقة، نرجع القائمة الكاملة عشان الجيمي يعرض "اختار من العمارات دي"
+  let unitsToReturn = units
+  if (normalizedSearch && units.length === 0) {
+    const allUnits = await db.operationalUnit.findMany({
+      where: { projectId, ...(includeInactive ? {} : { isActive: true }) },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        type: true,
+        isActive: true,
+        monthlyBillingDay: true,
+        monthlyManagementFee: true,
+        _count: { select: { residents: true, tickets: true } }
+      },
+      orderBy: { code: "asc" },
+      take
+    })
+    unitsToReturn = allUnits
+  }
+
+  const firstUnit = unitsToReturn[0]
+  const activeUnits = unitsToReturn.filter((u) => u.isActive).length
   const searchLabel = normalizedSearch ? ` matching "${normalizedSearch}"` : ""
 
   const humanReadable: HumanReadable = units.length
@@ -1159,9 +1180,12 @@ async function handleProjectUnitsList(
         ar: `تم العثور على ${units.length} وحدة${includeInactive ? " (بما فيها المتوقفة)" : ""}${normalizedSearch ? ` مطابقة لـ "${normalizedSearch}"` : ""}. ${activeUnits} نشطة.`
       }
     : {
-        ar: normalizedSearch
-          ? `لا توجد وحدات مطابقة لـ "${normalizedSearch}" في هذا المشروع.`
-          : "لم يتم العثور على وحدات لهذا المشروع."
+        ar:
+          normalizedSearch && unitsToReturn.length > 0
+            ? `لا توجد وحدة مطابقة لـ "${normalizedSearch}". العمارات المتاحة في المشروع أدناه — اعرضها وقل "اختار منها".`
+            : normalizedSearch
+              ? `لا توجد وحدات مطابقة لـ "${normalizedSearch}" في هذا المشروع.`
+              : "لم يتم العثور على وحدات لهذا المشروع."
       }
 
   const suggestions: Suggestion[] = units.length
@@ -1213,11 +1237,11 @@ async function handleProjectUnitsList(
       projectId,
       meta: {
         includeInactive: !!includeInactive,
-        count: units.length,
+        count: unitsToReturn.length,
         search: normalizedSearch
       },
       data: {
-        units
+        units: unitsToReturn
       },
       humanReadable,
       suggestions
@@ -2659,6 +2683,14 @@ export async function POST(req: NextRequest) {
 
   try {
     requestBody = await req.json()
+    // لو الـ body وصل كنص (مزدوج ترميز) نحاول نستخرج الـ object
+    if (typeof requestBody === "string" && requestBody.trim()) {
+      try {
+        requestBody = JSON.parse(requestBody) as RequestBody
+      } catch {
+        /* نكمل بالـ requestBody كنص ونفشل لاحقاً في القراءة */
+      }
+    }
   } catch (error) {
     return NextResponse.json(
       botFail("أرسل body بصيغة JSON صحيحة. تحقق من الترميز والأقواس.", "INVALID_JSON", {
@@ -2723,20 +2755,22 @@ export async function POST(req: NextRequest) {
     }
 
   const rawAction = body.action
-  // تطبيع: إزالة أي مسافات/أسطر داخل النص عشان الـ action يطابق ALLOWED_ACTIONS
-  const action =
-    typeof rawAction === "string"
-      ? rawAction.trim().replace(/\s+/g, "").toUpperCase()
-      : rawAction
+  // تطبيع قوي: إزالة مسافات + أي حرف غير حرف/رقم/شرطة سفلية (حتى لو فيه حرف مخفي أو Unicode)
+  const normalizeAction = (s: string) =>
+    s
+      .trim()
+      .replace(/\s+/g, "")
+      .replace(/[^A-Za-z0-9_]/g, "")
+      .toUpperCase()
+  const actionStr =
+    typeof rawAction === "string" ? normalizeAction(rawAction) : ""
+  const action = actionStr && ALLOWED_ACTIONS.includes(actionStr as AllowedAction) ? (actionStr as AllowedAction) : (typeof rawAction === "string" ? rawAction : undefined)
   const senderPhone = String(body.senderPhone ?? "").trim()
   const payload = body.payload ?? {}
 
   if (!action || !ALLOWED_ACTIONS.includes(action as AllowedAction)) {
-    // تشخيص: لو الـ action ظاهر صح والخطأ لسه UNSUPPORTED_ACTION غالباً الـ body وصل بشكل مختلف
-    if (process.env.NODE_ENV !== "production") {
-      // eslint-disable-next-line no-console
-      console.warn("[PM webhook] UNSUPPORTED_ACTION", { receivedAction: rawAction, normalized: action, hasActionInBody: "action" in body, bodyKeys: Object.keys(body) })
-    }
+    // eslint-disable-next-line no-console
+    console.warn("[PM webhook] UNSUPPORTED_ACTION", { receivedAction: rawAction, normalized: actionStr, bodyKeys: Object.keys(body) })
     return NextResponse.json(
       botFail(`أكشن غير مدعوم. القيم المسموحة: ${ALLOWED_ACTIONS.slice(0, 5).join(", ")} وغيرها. أرسل action من القائمة.`, "UNSUPPORTED_ACTION", {
         suggestions: ["راجع قائمة الأكشنز في البرومبت", "استخدم اسم الأكشن بالظبط"]
