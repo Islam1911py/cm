@@ -537,6 +537,7 @@ enum N8nApiKeyRole {
 }
 
 enum WebhookEventType {
+  CONTACT_IDENTIFIED
   TICKET_CREATED
   TICKET_UPDATED
   TICKET_RESOLVED

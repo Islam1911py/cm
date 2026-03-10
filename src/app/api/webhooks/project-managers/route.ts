@@ -2699,27 +2699,44 @@ export async function POST(req: NextRequest) {
     )
   }
 
-  // دعم صيغة n8n/Tool: الـ payload الفعلي قد يكون داخل parameters0_Value كنص JSON
-  let body: Record<string, unknown> = (requestBody as Record<string, unknown>) ?? {}
-  const paramsValue = (requestBody as Record<string, unknown>)?.parameters0_Value
-  if (typeof paramsValue === "string" && paramsValue.trim()) {
+  // دعم صيغة n8n/Tool: الـ payload الفعلي قد يكون داخل parameters0_Value (أو حقل آخر) كنص JSON
+  const rawReq = requestBody as Record<string, unknown> | null
+  let body: Record<string, unknown> = rawReq ?? {}
+  const tryParse = (val: unknown): Record<string, unknown> | null => {
+    if (typeof val !== "string" || !val.trim()) return null
     try {
-      const parsed = JSON.parse(paramsValue) as Record<string, unknown>
-      if (parsed && typeof parsed === "object") body = parsed
+      const p = JSON.parse(val) as Record<string, unknown>
+      return p && typeof p === "object" && "action" in p ? p : null
     } catch {
-      // لو الـ JSON معطوب نكمل بالـ body الأصلي
+      return null
     }
   }
+  const fromParams = tryParse(rawReq?.parameters0_Value) ?? tryParse((rawReq as Record<string, unknown>)?.["parameters_0_Value"])
+  if (fromParams) body = fromParams
+  else if (!body.action && rawReq && typeof rawReq === "object")
+    for (const [, v] of Object.entries(rawReq)) {
+      const parsed = tryParse(v)
+      if (parsed) {
+        body = parsed
+        break
+      }
+    }
 
   const rawAction = body.action
+  // تطبيع: إزالة أي مسافات/أسطر داخل النص عشان الـ action يطابق ALLOWED_ACTIONS
   const action =
     typeof rawAction === "string"
-      ? rawAction.trim().toUpperCase()
+      ? rawAction.trim().replace(/\s+/g, "").toUpperCase()
       : rawAction
   const senderPhone = String(body.senderPhone ?? "").trim()
   const payload = body.payload ?? {}
 
   if (!action || !ALLOWED_ACTIONS.includes(action as AllowedAction)) {
+    // تشخيص: لو الـ action ظاهر صح والخطأ لسه UNSUPPORTED_ACTION غالباً الـ body وصل بشكل مختلف
+    if (process.env.NODE_ENV !== "production") {
+      // eslint-disable-next-line no-console
+      console.warn("[PM webhook] UNSUPPORTED_ACTION", { receivedAction: rawAction, normalized: action, hasActionInBody: "action" in body, bodyKeys: Object.keys(body) })
+    }
     return NextResponse.json(
       botFail(`أكشن غير مدعوم. القيم المسموحة: ${ALLOWED_ACTIONS.slice(0, 5).join(", ")} وغيرها. أرسل action من القائمة.`, "UNSUPPORTED_ACTION", {
         suggestions: ["راجع قائمة الأكشنز في البرومبت", "استخدم اسم الأكشن بالظبط"]
